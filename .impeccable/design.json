@@ -1,0 +1,229 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-23T14:39:37.194628+00:00",
+  "title": "Design System: Ledger",
+  "extensions": {
+    "colorMeta": {
+      "background": {
+        "role": "neutral",
+        "displayName": "Cream"
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Cream surface"
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Dark chocolate"
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted dark chocolate"
+      },
+      "outline": {
+        "role": "neutral",
+        "displayName": "Ivory divider"
+      },
+      "primary": {
+        "role": "primary",
+        "displayName": "Caramel"
+      },
+      "primaryPressed": {
+        "role": "primary",
+        "displayName": "Pressed caramel"
+      },
+      "onPrimary": {
+        "role": "primary",
+        "displayName": "White on caramel"
+      },
+      "primaryContainer": {
+        "role": "primary",
+        "displayName": "Pale caramel"
+      },
+      "onPrimaryContainer": {
+        "role": "primary",
+        "displayName": "Deep caramel"
+      },
+      "onDark": {
+        "role": "neutral",
+        "displayName": "Ivory on dark chocolate"
+      },
+      "mutedOnDark": {
+        "role": "neutral",
+        "displayName": "Muted cream on dark chocolate"
+      },
+      "outlineOnDark": {
+        "role": "neutral",
+        "displayName": "Dark chocolate divider"
+      },
+      "error": {
+        "role": "status",
+        "displayName": "Earth red"
+      },
+      "errorContainer": {
+        "role": "status",
+        "displayName": "Pale earth red"
+      },
+      "primaryText": {
+        "role": "primary",
+        "displayName": "Accessible brown action text"
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Spending display",
+        "purpose": "Net paid spending amount; tabular numbers."
+      },
+      "headline": {
+        "displayName": "Screen headline",
+        "purpose": "Screen/form titles and outstanding amount."
+      },
+      "title": {
+        "displayName": "Section title",
+        "purpose": "Section and empty-state headings."
+      },
+      "body": {
+        "displayName": "Native body",
+        "purpose": "Descriptions, records, form controls; system default font family."
+      },
+      "label": {
+        "displayName": "Supporting label",
+        "purpose": "Metadata, navigation, captions."
+      }
+    },
+    "shadows": [],
+    "motion": [],
+    "breakpoints": [
+      {
+        "name": "expanded",
+        "value": "760dp",
+        "purpose": "window width >=760: 112dp rail and two-column details."
+      },
+      {
+        "name": "stacked",
+        "value": "350dp effective width",
+        "purpose": "width / fontScale <350: tiles and record figures stack."
+      }
+    ],
+    "source": {
+      "authority": "src/theme.ts",
+      "components": [
+        "src/LedgerScreen.tsx",
+        "src/Icon.tsx"
+      ],
+      "platform": "android",
+      "units": "React Native logical values; CSS specimen px correspond to logical sizes.",
+      "nativeRuntimeVerified": false,
+      "specimenCaveat": "Self-contained browser translations only. Native controls retain platform focus behavior. No custom hover/focus treatment exists in source; browser specimens retain browser focus defaults. Source modal has animationType none. No native detector was run.",
+      "tonalRampCaveat": "Synthesized OKLCH display ramps only, constant source hue/chroma with stepped lightness. Not shipped tokens; the DESIGN.md frontmatter retains exact source hex colors."
+    }
+  },
+  "components": [
+    {
+      "name": "Primary button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Shared native action; browser specimen translates its default, pressed, and disabled styling.",
+      "html": "<button class=\"ds-button-primary\">Save record</button>",
+      "css": ".ds-button-primary{min-height:52px;border-radius:12px;padding:16px;margin-top:16px;font:600 14px/22px system-ui,sans-serif;display:flex;align-items:center;justify-content:center;background:#C05800;color:#FFFFFF;border:none}.ds-button-primary:active{background:#713600}.ds-button-primary:disabled{opacity:.4}"
+    },
+    {
+      "name": "Secondary button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Shared native action; browser specimen translates its default, pressed, and disabled styling.",
+      "html": "<button class=\"ds-button-secondary\">Load sample invoices</button>",
+      "css": ".ds-button-secondary{min-height:52px;border-radius:12px;padding:16px;margin-top:16px;font:600 14px/22px system-ui,sans-serif;display:flex;align-items:center;justify-content:center;background:#F3EDCC;color:#38240D;border:1px solid #D9C8A7}.ds-button-secondary:active{background:#F3EDCC}.ds-button-secondary:disabled{opacity:.4}"
+    },
+    {
+      "name": "Destructive button",
+      "kind": "button",
+      "refersTo": "button-destructive",
+      "description": "Shared native action; browser specimen translates its default, pressed, and disabled styling.",
+      "html": "<button class=\"ds-button-destructive\">Delete all local records</button>",
+      "css": ".ds-button-destructive{min-height:52px;border-radius:12px;padding:16px;margin-top:16px;font:600 14px/22px system-ui,sans-serif;display:flex;align-items:center;justify-content:center;background:transparent;color:#963E32;border:1px solid #963E32}.ds-button-destructive:active{background:#F3EDCC}.ds-button-destructive:disabled{opacity:.4}"
+    },
+    {
+      "name": "Text field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Neutral outlined field; native selection uses caramel.",
+      "html": "<label class=\"ds-field\">Merchant<input class=\"ds-input\" placeholder=\"e.g. Adobe\"></label>",
+      "css": ".ds-field{display:grid;gap:10px;font:500 14px/22px system-ui,sans-serif;color:#38240D}.ds-input{min-height:56px;padding:16px;border:1px solid #D9C8A7;border-radius:12px;background:#F3EDCC;color:#38240D;font:14px/22px system-ui,sans-serif}.ds-input::placeholder{color:#713600}.ds-input::selection{background:#F5E1BD}"
+    },
+    {
+      "name": "Filter chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Wrapping filters; active state reduces opacity.",
+      "html": "<button class=\"ds-chip\" aria-pressed=\"false\">All records</button>",
+      "css": ".ds-chip{min-height:48px;border:1px solid #D9C8A7;border-radius:12px;background:#F3EDCC;color:#713600;padding:13px 16px;font:14px/22px system-ui,sans-serif}.ds-chip:active{opacity:.72}"
+    },
+    {
+      "name": "Selected chip",
+      "kind": "chip",
+      "refersTo": "chip-selected",
+      "description": "Selection has caramel fill, border, text, and an explicit selected state.",
+      "html": "<button class=\"ds-chip-selected\" aria-pressed=\"true\">Needs review (2)</button>",
+      "css": ".ds-chip-selected{min-height:48px;border:1px solid #C05800;border-radius:12px;background:#F5E1BD;color:#713600;padding:13px 16px;font:600 14px/22px system-ui,sans-serif}.ds-chip-selected:active{opacity:.72}"
+    },
+    {
+      "name": "Selected destination",
+      "kind": "nav",
+      "refersTo": "navigation",
+      "description": "Compact navigation selection specimen; native layout switches to rail at 760 dp.",
+      "html": "<nav class=\"ds-nav\" role=\"tablist\"><button class=\"ds-nav-item\" role=\"tab\" aria-selected=\"true\"><span class=\"ds-nav-icon\"><svg width=\"21\" height=\"21\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"8\" rx=\"1.5\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"5\" rx=\"1.5\"/><rect x=\"3\" y=\"15\" width=\"7\" height=\"6\" rx=\"1.5\"/><rect x=\"14\" y=\"12\" width=\"7\" height=\"9\" rx=\"1.5\"/></svg></span><span class=\"ds-nav-label\">Overview</span></button></nav>",
+      "css": ".ds-nav{display:flex;background:#38240D;padding:12px 8px;gap:8px}.ds-nav-item{flex:1;min-height:60px;padding:2px 0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:transparent;border:0;color:#FDFBD4}.ds-nav-item:active{background:#604322}.ds-nav-icon{display:flex;align-items:center;justify-content:center;width:48px;min-height:30px;border-radius:16px;background:#C05800;color:#FFFFFF}.ds-nav-label{font:600 12px/18px system-ui,sans-serif;margin-top:6px}"
+    },
+    {
+      "name": "Account statement",
+      "kind": "card",
+      "refersTo": "statement",
+      "description": "Dark chocolate financial anchor; illustrative amount uses the implemented display hierarchy.",
+      "html": "<section class=\"ds-statement\"><div class=\"ds-statement-month\">November 2026</div><div class=\"ds-balance\"><span class=\"ds-balance-label\">Total spent</span><div class=\"ds-balance-amount\">₹12,450.00</div><span class=\"ds-statement-note\">4 confirmed records · refunds deducted</span></div><div class=\"ds-statement-footer\">Only paid records count toward this total.</div></section>",
+      "css": ".ds-statement{border-radius:16px;background:#38240D;color:#FDFBD4;padding:14px 24px 20px;font-family:system-ui,sans-serif}.ds-statement-month{font-size:14px;line-height:22px;font-weight:500}.ds-balance{padding:14px 0 24px}.ds-balance-label{font-size:14px;line-height:22px;color:#DDD0AD}.ds-balance-amount{font-size:44px;line-height:54px;letter-spacing:-1.2px;font-weight:500;font-variant-numeric:tabular-nums;margin:4px 0 8px}.ds-statement-note{font-size:12px;line-height:18px;color:#DDD0AD}.ds-statement-footer{border-top:1px solid #604322;padding-top:16px;color:#DDD0AD;font-size:12px;line-height:18px}"
+    },
+    {
+      "name": "Expense record",
+      "kind": "custom",
+      "refersTo": "record",
+      "description": "Open divider row with explicit payment status; sample content is illustrative.",
+      "html": "<button class=\"ds-record\"><span class=\"ds-record-identity\"><span class=\"ds-receipt\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 3h14v18l-3-2-4 2-4-2-3 2V3Z\"/><path d=\"M9 8h6M9 12h6\"/></svg></span><span><span class=\"ds-record-title\">Sample merchant</span><span class=\"ds-record-meta\">Other · 2026-11-23</span></span></span><span class=\"ds-record-figures\"><span class=\"ds-record-amount\">₹450.00</span><span class=\"ds-record-meta\">Paid</span></span></button>",
+      "css": ".ds-record{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:76px;padding:18px 0;border:0;border-bottom:1px solid #D9C8A7;background:transparent;color:#38240D;text-align:left;font-family:system-ui,sans-serif}.ds-record:active{background:#F3EDCC}.ds-record-identity{display:flex;align-items:center;gap:12px;flex:1;min-width:0}.ds-receipt{width:36px;height:40px;display:flex;align-items:center;justify-content:center;border-radius:10px;background:#F5E1BD;color:#C05800}.ds-record-title{display:block;font-size:14px;line-height:22px;font-weight:500}.ds-record-meta{display:block;font-size:12px;line-height:18px;font-weight:500;color:#713600}.ds-record-figures{display:flex;flex-direction:column;align-items:flex-end;max-width:48%;flex-shrink:1}.ds-record-amount{font-size:14px;line-height:22px;font-weight:600;font-variant-numeric:tabular-nums}.ds-record-figures .ds-record-meta{margin-top:4px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Personal account statement",
+    "overview": "Ledger uses the calm precision of a personal account statement: cream working space, dark chocolate anchors, and caramel actions. The approved direction is classy and minimalist, with an approximate 60% cream, 30% dark chocolate, and 10% caramel visual balance.\n\nNative system sans typography, aligned financial figures, open sections, and restrained rounded controls keep bookkeeping readable. This is an Android-first React Native system; code is the design authority.",
+    "keyCharacteristics": [
+      "Cream workspace and dark chocolate statement/navigation anchors.",
+      "Caramel for action, selection, refunds, and category bars.",
+      "Native system sans with tabular financial figures.",
+      "Flat surfaces, precise dividers, and generous working margins."
+    ],
+    "rules": [
+      {
+        "name": "60–30–10 balance",
+        "body": "Cream 60%, dark chocolate 30%, caramel 10%; medium brown supports text and pressed states. Proportions guide visual emphasis rather than a pixel quota.",
+        "section": "colors"
+      },
+      {
+        "name": "Readable accents",
+        "body": "Use white on solid caramel buttons and medium brown for small action text on cream. Preserve text labels for semantic states.",
+        "section": "colors"
+      }
+    ],
+    "dos": [
+      "Do use the shared theme for new screens and shared settings controls.",
+      "Do keep spending and outstanding obligations visually distinct.",
+      "Do preserve native font scaling, safe areas, and wrapping or stacking behavior.",
+      "Do use the existing 24-unit stroke icon vocabulary."
+    ],
+    "donts": [
+      "Don't introduce decorative raster artwork into the working interface.",
+      "Don't add category rainbow colors, ornamental shadows, or display fonts.",
+      "Don't use color alone to communicate payment or review status.",
+      "Don't describe web preview specimens as native Android verification."
+    ]
+  }
+}

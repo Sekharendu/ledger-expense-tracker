@@ -23,6 +23,7 @@ expo-env.d.ts
 
 # debug
 npm-debug.*
+*-export.log
 yarn-debug.*
 yarn-error.*
 
@@ -32,6 +33,12 @@ yarn-error.*
 
 # local env files
 .env*.local
+.env
+.env.server
+/server/data/
+/server/google-oauth.json
+.vercel/
+/supabase/.temp/
 
 # typescript
 *.tsbuildinfo

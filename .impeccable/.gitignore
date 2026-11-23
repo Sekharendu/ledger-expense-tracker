@@ -1,0 +1,9 @@
+# Local verification tooling and outputs, not design authority.
+tools/
+review/
+*.log
+preview.cjs
+inspect.cjs
+verify.cjs
+config.local.json
+hook.cache.json
