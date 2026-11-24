@@ -55,7 +55,7 @@ try {
   const backendUser = await store.authenticate(a.token);
   check(backendUser?.id === a.user.id, 'backend validates real account and active session');
   if (apiBase) {
-    const request = (path, token, method = 'GET', extra = {}) => fetch(`${apiBase}${path}`, { method, headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), Origin: apiBase, ...extra }, signal: AbortSignal.timeout(30_000) });
+    const request = (path, token, method = 'GET', extra = {}) => fetch(`${apiBase}${path}`, { method, headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), Origin: apiBase, ...extra }, signal: AbortSignal.timeout(path === '/api/account' && extra['X-Ledger-Confirm-Deletion'] ? 60_000 : 30_000) });
     check((await request('/api/connection')).status === 401, 'live API rejects anonymous connection requests');
     const connection = await request('/api/connection', a.token);
     check(connection.status === 200, 'live API authenticates account with production origin');

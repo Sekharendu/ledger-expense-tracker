@@ -6,12 +6,12 @@ Updated: 24 November 2026. An item is checked only after its stated evidence exi
 
 - [x] Public GitHub repository: https://github.com/Sekharendu/ledger-expense-tracker (`main`).
 - [x] Vercel is connected to that GitHub repository.
-- [x] Production deployment reached READY from commit `5f99825f0ecba11ac2e58b72675d72f8ad50d4da`.
+- [x] Production deployment reached READY from commit `3e2806084614fa245a79d44abe40289f4d329d98`.
 - [x] Homepage, `/auth/callback`, and `/api/health` returned HTTP 200 using Vercel-authenticated requests.
 - [x] Supabase project `oxwrqvpfwgkffppczixx` is healthy; public and backend credentials validated without displaying secrets.
 - [x] Ledger's five PostgreSQL tables are created with RLS enabled.
 - [x] Google identity sign-in is enabled in Supabase. Local web and native OAuth initiation reach Google with identity scopes only.
-- [x] Integrated validation: 37 tests passed; TypeScript, web export and Android Hermes export passed. This is not an APK/device test.
+- [x] Integrated validation: 37 tests passed; TypeScript, lint, web export and Android Hermes export passed. This is not an APK/device test.
 
 ## 1. Finish production sign-in
 
@@ -27,14 +27,14 @@ Updated: 24 November 2026. An item is checked only after its stated evidence exi
 - [x] Backend encryption and cron secrets exist in ignored `.env.server`.
 - [x] Securely install `SUPABASE_SECRET_KEY`, `TOKEN_ENCRYPTION_KEY`, and `CRON_SECRET` in Vercel's production environment (CLI stdin transfer succeeded; all three verified as sensitive, production-only variables).
 - [ ] Verify `SUPABASE_URL`, approved production web origins, and the mobile API URL point at the intended services.
-- [ ] Redeploy the intended GitHub commit after environment changes.
-- [ ] Verify the live API reports `databaseConfigured: true` and authenticated account requests succeed.
+- [x] GitHub push automatically deployed commit `3e28060` to production; Vercel reported READY.
+- [x] Live health reports `databaseConfigured: true`; real authenticated account requests with the production Origin succeeded.
 
 ## 3. Allow public production access
 
 - [x] Configure production deployment protection so ordinary users can reach the app and mobile API without a Vercel login; preview protection remains enabled (verified by production agent, 24 November).
 - [x] Confirm unauthenticated public HTTP access to the sign-in page, `/auth/callback`, and health endpoint (all HTTP 200).
-- [ ] Confirm user data and authenticated API endpoints remain protected by app authentication and ownership checks.
+- [x] Live connection and cron endpoints reject anonymous requests with HTTP 401; authenticated data isolation checks passed.
 
 ## 4. Enable Gmail tracking
 
@@ -56,7 +56,7 @@ Updated: 24 November 2026. An item is checked only after its stated evidence exi
 - [ ] Verify real Gmail import, review/confirmation, rescan deduplication, refunds and unpaid bills.
 - [ ] Verify signing out leaves enabled Gmail tracking intact.
 - [ ] Verify disconnect stops scans, revokes access, and keeps existing expenses.
-- [ ] Check production logs after an end-to-end run; resolve material runtime failures.
+- [ ] Check production logs after a complete Google/Gmail run. The current runtime-error summary reported none; individual log lookup returned a provider error, so full log review is not claimed.
 
 ## 6. Build and test Android
 
@@ -71,7 +71,7 @@ Updated: 24 November 2026. An item is checked only after its stated evidence exi
 
 - [ ] Publish an accurate privacy policy with the operator's real contact information and retention/deletion details.
 - [x] Implement account/data deletion endpoint and typed-confirmation app/web controls; simulated tests cover authentication, confirmation, revocation ordering and failed revocation preserving the account. Real hosted deletion test remains pending below.
-- [ ] Verify real hosted account deletion and cascading expense removal using a temporary account after redeployment.
+- [x] Real hosted account deletion, cascading expense removal and deleted-session rejection passed using a temporary account. Both test accounts removed; no emails sent. First request exceeded the verification script 30-second timeout; retry using the app 60-second timeout passed.
 - [ ] Determine and complete Google's verification requirements for the intended Gmail scopes and audience.
 - [ ] If publishing through Google Play, prepare the store listing, data disclosures, deletion URL and required release review.
 
@@ -86,6 +86,6 @@ Updated: 24 November 2026. An item is checked only after its stated evidence exi
 
 - A Google sign-in and Gmail grant require the account owner's browser interaction; no agent test substitutes for actual consent.
 - Google Gmail OAuth client credentials are not yet present in the private app configuration.
-- Production-only private secret transfer completed without displaying values. A fresh deployment and live configuration check are still required to activate/verify the new environment.
+- Production private secret transfer, GitHub deployment, live database/API validation and temporary-account deletion checks are complete. Gmail is still unconfigured.
 - Expo CLI reports `Not logged in`; no Expo project is linked. No APK/AAB or signing credentials have been generated.
 - Privacy-policy operator identity/contact, the intended public audience, and an authorized mobile build/publishing account must be confirmed before claiming public-launch readiness.
