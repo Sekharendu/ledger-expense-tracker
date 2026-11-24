@@ -1,6 +1,7 @@
 {
   "name": "finance-app",
   "version": "1.0.0",
+  "type": "module",
   "main": "expo-router/entry",
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
