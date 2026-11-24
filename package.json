@@ -47,7 +47,9 @@
     "lint": "eslint .",
     "test": "node --test src/expenses.test.ts src/email/parser.test.ts server/*.test.mjs",
     "email": "node --env-file-if-exists=.env.server server/index.mjs",
-    "email:dev": "node --watch --env-file-if-exists=.env.server server/index.mjs"
+    "email:dev": "node --watch --env-file-if-exists=.env.server server/index.mjs",
+    "configure:production": "node scripts/upload-production-secrets.mjs",
+    "verify:hosted": "node scripts/verify-hosted-data.mjs --run"
   },
   "private": true,
   "engines": {

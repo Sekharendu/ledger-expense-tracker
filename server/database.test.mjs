@@ -72,3 +72,22 @@ test('database sync leases, invoice deduplication and disconnect cancellation ar
     assert.equal((await db.query('select * from ledger_claim_scan($1)', [userA])).rows.length, 0);
   } finally { await db.close(); }
 });
+
+test('hard account deletion cascades across Ledger data after sessions are revoked', async () => {
+  const db = await database();
+  try {
+    const expense = sampleExpenses()[0];
+    await db.query('insert into ledger_expenses(user_id,id,payload) values($1,$2,$3)', [userA, expense.id, expense]);
+    await db.query('insert into ledger_gmail_connections(user_id,email,encrypted_tokens) values($1,$2,$3)', [userA, 'a@example.com', 'ciphertext']);
+    await db.query('insert into ledger_oauth_attempts(token_hash,state_hash,user_id,encrypted_proof,expires_at) values($1,$2,$3,$4,now()+interval \'10 minutes\')', ['token-hash', 'state-hash', userA, 'encrypted-proof']);
+    await db.query('insert into ledger_sync_history(user_id) values($1)', [userA]);
+    await db.query('delete from auth.sessions where user_id=$1', [userA]);
+    await db.query('delete from auth.users where id=$1', [userA]);
+    for (const table of ['ledger_profiles', 'ledger_expenses', 'ledger_gmail_connections', 'ledger_oauth_attempts', 'ledger_sync_history']) {
+      const column = table === 'ledger_profiles' ? 'id' : 'user_id';
+      const result = await db.query(`select count(*)::integer as count from ${table} where ${column}=$1`, [userA]);
+      assert.equal(result.rows[0].count, 0, table);
+    }
+    assert.equal((await db.query('select id from auth.users where id=$1', [userB])).rows.length, 1);
+  } finally { await db.close(); }
+});

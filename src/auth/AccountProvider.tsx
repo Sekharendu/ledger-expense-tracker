@@ -4,9 +4,10 @@ import * as WebBrowser from 'expo-web-browser';
 import { makeRedirectUri } from 'expo-auth-session';
 import type { Session } from '@supabase/supabase-js';
 import { completeGoogleSignIn, supabase } from './supabase';
+import { deleteAccount as deleteAccountRequest } from '../email/client';
 
 WebBrowser.maybeCompleteAuthSession();
-type Account = { session: Session | null; loading: boolean; error: string; signIn: () => Promise<void>; signOut: () => Promise<void> };
+type Account = { session: Session | null; loading: boolean; error: string; signIn: () => Promise<void>; signOut: () => Promise<void>; deleteAccount: () => Promise<void> };
 const Context = createContext<Account | null>(null);
 
 export function AccountProvider({ children }: { children: ReactNode }) {
@@ -41,7 +42,12 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     if (issue) throw new Error('Could not sign out. Check your connection and try again.');
     setSession(null);
   }
-  return <Context.Provider value={{ session, loading, error, signIn, signOut }}>{children}</Context.Provider>;
+  async function deleteAccount() {
+    await deleteAccountRequest();
+    if (supabase) await supabase.auth.signOut({ scope: 'local' });
+    setSession(null);
+  }
+  return <Context.Provider value={{ session, loading, error, signIn, signOut, deleteAccount }}>{children}</Context.Provider>;
 }
 
 export function useAccount() {

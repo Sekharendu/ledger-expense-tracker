@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import { Buffer } from 'node:buffer';
 import assert from 'node:assert/strict';
-import { createGoogleClient, extractMessage, extractPdfText, GMAIL_SCOPE, syncMailbox } from './gmail.mjs';
+import { createGoogleClient, extractMessage, extractPdfText, GMAIL_SCOPE, ProviderError, readJson, syncMailbox } from './gmail.mjs';
 
 const encoded = text => Buffer.from(text).toString('base64url');
 const fixture = (parts, id = 'msg') => ({ id, threadId: 'thread', internalDate: String(Date.parse('2026-11-23T12:00:00Z')), payload: { mimeType: 'multipart/mixed', headers: [{ name: 'Subject', value: 'Your invoice' }, { name: 'From', value: 'Store <billing@store.test>' }], parts } });
@@ -34,6 +34,53 @@ test('Gmail list pagination returns a continuation without losing messages', asy
   assert.equal(result.hasMore, true);
   assert.equal(result.nextPageToken, 'page-3');
   assert.equal(result.expenses[0].amount, 59900);
+});
+
+test('a removed or oversized message does not block later messages or pagination', async () => {
+  const result = await syncMailbox({ token: 'token', email: 'me@example.com', api: async route => {
+    if (route.startsWith('/messages?')) return { messages: [{ id: 'removed' }, { id: 'oversized' }, { id: 'good' }], nextPageToken: 'continue' };
+    if (route.includes('/removed?')) throw new ProviderError('not found', 404);
+    if (route.includes('/oversized?')) throw new ProviderError('too large', 413);
+    return fixture([{ mimeType: 'text/plain', body: { data: encoded('Receipt\nTotal: INR 499') } }], 'good');
+  } });
+  assert.equal(result.scanned, 3);
+  assert.equal(result.expenses.length, 1);
+  assert.equal(result.skipped.length, 2);
+  assert.equal(result.nextPageToken, 'continue');
+  assert.match(result.skipped[0].reason, /removed/);
+  assert.match(result.skipped[1].reason, /size limit/);
+});
+
+test('an unreadable PDF does not discard an otherwise readable email receipt', async () => {
+  const message = fixture([{ mimeType: 'text/plain', body: { data: encoded('Receipt\nTotal: INR 250') } }, { filename: 'gone.pdf', mimeType: 'application/pdf', body: { attachmentId: 'removed' } }]);
+  const result = await extractMessage(message, 'account', async () => { throw new ProviderError('removed', 404); }, 'token');
+  assert.equal(result.expenses[0].amount, 25000);
+  assert.equal(result.warnings.length, 1);
+});
+
+test('authentication and quota errors keep the page retryable instead of skipping messages', async () => {
+  for (const status of [401, 403, 429, 502]) {
+    await assert.rejects(syncMailbox({ token: 'token', email: 'me@example.com', api: async route => {
+      if (route.startsWith('/messages?')) return { messages: [{ id: 'message' }], nextPageToken: 'continue' };
+      throw new ProviderError('provider failure', status);
+    } }), error => error instanceof ProviderError && error.status === status);
+  }
+});
+
+test('Gmail 403 rate-limit errors retry, while permission failures do not', async () => {
+  const responses = [new Response(JSON.stringify({ error: { errors: [{ reason: 'userRateLimitExceeded' }] } }), { status: 403 }), new Response(JSON.stringify({ messages: [] }), { status: 200 })];
+  const delays = [];
+  const client = createGoogleClient({ fetcher: async () => responses.shift(), sleep: async delay => { delays.push(delay); } });
+  assert.deepEqual(await client.api('/messages', 'token'), { messages: [] });
+  assert.deepEqual(delays, [1000]);
+  let calls = 0;
+  const denied = createGoogleClient({ fetcher: async () => { calls++; return new Response(JSON.stringify({ error: { errors: [{ reason: 'insufficientPermissions' }] } }), { status: 403 }); }, sleep: async () => { throw new Error('must not retry'); } });
+  await assert.rejects(denied.api('/messages', 'token'), error => error.status === 403);
+  assert.equal(calls, 1);
+});
+
+test('response byte limits are reported distinctly from temporary provider failures', async () => {
+  await assert.rejects(readJson(new Response(JSON.stringify({ large: 'x'.repeat(100) })), 10), error => error instanceof ProviderError && error.status === 413);
 });
 test('authorization uses state, offline read-only access and PKCE', () => {
   const google = createGoogleClient({ clientId: 'client', clientSecret: 'secret', redirectUri: 'http://localhost/callback' });

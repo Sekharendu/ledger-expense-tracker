@@ -6,13 +6,13 @@ Google account sign-in and Gmail mailbox access are separate grants.
 
 1. Enable the Google identity provider in Supabase Auth. Register the Supabase callback URL with the identity client, and configure the app's redirect allowlist. Sign-in requests only `openid email profile`.
 2. Enable the Gmail API in Google Cloud. Configure the OAuth consent screen and add the read-only scope `https://www.googleapis.com/auth/gmail.readonly`. In testing mode, add the Google accounts allowed to test it.
-3. Create a Web application OAuth client for Gmail authorization. Register the Vercel callback `https://YOUR_DEPLOYMENT/api/oauth/google/callback` exactly.
+3. Create a Web application OAuth client named **Ledger Gmail** for the optional Gmail connection. Register the production callback `https://ledger-expense-tracker-sekharendus-projects.vercel.app/api/oauth/google/callback` exactly. Keep this separate from the sign-in client configured in Supabase.
 4. Put that client's `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URI` in Vercel's server environment. Keep them separate from the app's public variables.
 5. Configure the Supabase server secret, token encryption key and cron secret using `.env.server.example` as the variable list. Apply the checked-in SQL migration to the intended hosted project.
 
 The backend verifies the Google ID token, nonce and mailbox identity against the signed-in Supabase user, and uses PKCE and one-time state. It encrypts Google tokens before storing them in PostgreSQL. Secrets are not returned to the app. See [Google's server OAuth documentation](https://developers.google.com/identity/protocols/oauth2/web-server) and [Supabase Google sign-in](https://supabase.com/docs/guides/auth/social-login/auth-google).
 
-Gmail read-only is a restricted scope. Public distribution can require Google's verification and security assessment; see [scope requirements](https://developers.google.com/workspace/gmail/api/auth/scopes). Test-mode grants can expire and require reconnecting.
+Gmail read-only is a restricted scope. Public distribution can require Google's verification and security assessment; see [scope requirements](https://developers.google.com/workspace/gmail/api/auth/scopes). With an External audience and Testing publishing status, refresh tokens for Gmail scopes expire after seven days; reconnect during development as needed. See [Google's token-expiration rules](https://developers.google.com/identity/protocols/oauth2/).
 
 ## User experience
 

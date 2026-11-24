@@ -9,6 +9,7 @@ import { GmailConnection } from './email/GmailConnection';
 import { useAccount } from './auth/AccountProvider';
 import { AccountSignIn } from './auth/AccountSignIn';
 import { useCloudExpenses } from './auth/useCloudExpenses';
+import { AccountDeletion } from './auth/AccountDeletion';
 
 const money = (amount: number) => `${amount < 0 ? '−' : ''}₹${(Math.abs(amount) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const today = () => { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; };
@@ -176,6 +177,7 @@ function LedgerDashboard() {
             <Text style={s.caption}>Adds five fictional records for this month. Loading them again will not duplicate them.</Text>
             <ActionButton label="Share records as CSV text" onPress={exportRecords} secondary disabled={!loaded || busy}/>
             <View style={s.deleteSection}><ActionButton label="Delete all expenses" onPress={() => Alert.alert('Delete all expenses?', 'This permanently deletes your loaded expenses from your account. Gmail remains connected until you disconnect it.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Delete', style: 'destructive', onPress: () => { void commit([]); } }])} secondary destructive disabled={!loaded || busy}/></View>
+            <AccountDeletion disabled={busy}/>
             <Text style={s.caption}>Ledger · Android MVP · Gmail invoice import</Text>
           </>}
         </ScrollView>

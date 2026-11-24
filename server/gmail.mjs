@@ -23,14 +23,14 @@ export async function readJson(response, limit = 16 * 1024 * 1024) {
       const { done, value } = await reader.read();
       if (done) break;
       size += value.length;
-      if (size > limit) throw new ProviderError('Email or attachment exceeds the import size limit.');
+      if (size > limit) throw new ProviderError('Email or attachment exceeds the import size limit.', 413);
       chunks.push(value);
     }
     return JSON.parse(Buffer.concat(chunks).toString('utf8'));
   } finally { await reader.cancel().catch(() => {}); }
 }
 
-export function createGoogleClient({ clientId, clientSecret, redirectUri, fetcher = fetch }) {
+export function createGoogleClient({ clientId, clientSecret, redirectUri, fetcher = fetch, sleep = delay => new Promise(resolve => setTimeout(resolve, delay)) }) {
   async function tokenRequest(parameters) {
     const response = await fetcher('https://oauth2.googleapis.com/token', {
       method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -44,12 +44,17 @@ export function createGoogleClient({ clientId, clientSecret, redirectUri, fetche
   async function api(pathname, accessToken, limit) {
     for (let attempt = 0; attempt < 3; attempt++) {
       const response = await fetcher(`${API}${pathname}`, { headers: { Authorization: `Bearer ${accessToken}` }, signal: AbortSignal.timeout(30_000) });
-      if ((response.status === 429 || response.status >= 500) && attempt < 2) { await response.body?.cancel(); await new Promise(resolve => setTimeout(resolve, 250 * 2 ** attempt)); continue; }
       if (!response.ok) {
-        await response.body?.cancel();
+        const detail = await readJson(response, 64 * 1024).catch(() => null);
+        const reasons = Array.isArray(detail?.error?.errors) ? detail.error.errors.map(error => error.reason) : [];
+        const rateLimited = response.status === 429 || (response.status === 403 && reasons.some(reason => ['rateLimitExceeded', 'userRateLimitExceeded'].includes(reason)));
+        if ((rateLimited || response.status >= 500) && attempt < 2) { await sleep(1000 * 2 ** attempt); continue; }
         if (response.status === 401) throw new ProviderError('Gmail access expired or was revoked. Reconnect your account.', 401);
+        if (response.status === 404) throw new ProviderError('The Gmail message or attachment is no longer available.', 404);
+        if (rateLimited) throw new ProviderError('Gmail rate limit reached. Wait a minute before syncing again.', 429);
+        if (response.status === 403 && reasons.includes('dailyLimitExceeded')) throw new ProviderError('The Gmail API daily quota has been reached. Try syncing later.', 429);
         if (response.status === 403) throw new ProviderError('Google denied Gmail access. Enable the Gmail API and grant read-only email permission.', 403);
-        throw new ProviderError(response.status === 429 ? 'Gmail rate limit reached. Wait a minute before syncing again.' : 'Gmail could not load a message. Please try again.', response.status === 429 ? 429 : 502);
+        throw new ProviderError('Gmail could not load a message. Please try again.', 502);
       }
       return readJson(response, limit);
     }
@@ -124,7 +129,7 @@ export async function extractMessage(message, accountKey, api, token, pdfExtract
       const text = await pdfExtractor(Buffer.from(data, 'base64url'));
       documents.push({ text, filename: (part.filename || 'invoice.pdf').slice(0, 150) });
     } catch (error) {
-      if (error instanceof ProviderError) throw error;
+      if (error instanceof ProviderError && ![404, 413].includes(error.status)) throw error;
       warnings.push('PDF could not be read (encrypted, scanned, too large, or invalid). Review the source email.');
     }
   }
@@ -151,8 +156,9 @@ export async function syncMailbox({ api, token, email, pageToken, pdfExtractor }
       for (const reason of result.warnings) skipped.push({ messageId: reference.id, subject: result.subject.slice(0, 250), reason });
       if (!result.expenses.length) skipped.push({ messageId: reference.id, subject: result.subject.slice(0, 250), reason: result.reasons[0] ?? 'No readable invoice text or supported attachment.' });
     } catch (error) {
-      if (error instanceof ProviderError) throw error;
-      skipped.push({ messageId: reference.id, subject: 'Message could not be processed', reason: 'Could not extract this message. Review it in Gmail.' });
+      if (error instanceof ProviderError && ![404, 413].includes(error.status)) throw error;
+      const reason = error instanceof ProviderError && error.status === 404 ? 'Message or attachment was removed before it could be imported.' : error instanceof ProviderError && error.status === 413 ? 'Message exceeds the import size limit. Review it in Gmail.' : 'Could not extract this message. Review it in Gmail.';
+      skipped.push({ messageId: reference.id, subject: 'Message could not be processed', reason });
     }
   }
   return { expenses, skipped, scanned: (list.messages ?? []).length, hasMore: Boolean(list.nextPageToken), nextPageToken: list.nextPageToken, completedAt: new Date().toISOString() };

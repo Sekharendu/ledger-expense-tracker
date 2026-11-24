@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
-import { createHostedServer } from './hosted.mjs';
+import { createHostedHandler, createHostedServer } from './hosted.mjs';
 import { createTokenCipher } from './cipher.mjs';
+import { HostedStore } from './store.mjs';
 import { GMAIL_SCOPE } from './gmail.mjs';
 
 test('hosted flow separates account sessions, optional Gmail permission, background scans and disconnect', async () => {
@@ -41,7 +42,7 @@ test('hosted flow separates account sessions, optional Gmail permission, backgro
     revoke: async () => { revoked = true; },
     api: async route => route.startsWith('/messages?') ? { messages: [{ id: 'msg' }] } : { id: 'msg', threadId: 'thread', internalDate: String(Date.now()), payload: { mimeType: 'text/plain', headers: [{ name: 'Subject', value: 'Invoice' }, { name: 'From', value: 'Store <billing@vendor.test>' }], body: { data: btoa('Invoice No: INV-123\nTotal: INR 499') } } },
   };
-  const server = createHostedServer({ clientId: 'client', clientSecret: 'secret', allowedOrigins: ['http://localhost:8081'], cronSecret: 'cron-secret' }, { store, cipher, google });
+  const server = createHostedServer({ clientId: 'client', clientSecret: 'secret', redirectUri: 'https://ledger.example/api/oauth/google/callback', allowedOrigins: ['http://localhost:8081'], cronSecret: 'cron-secret' }, { store, cipher, google });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
   const call = (path, token = 'signed-in-A', method = 'GET') => fetch(base + path, { method, headers: { Authorization: `Bearer ${token}` } });
@@ -69,6 +70,7 @@ test('hosted flow separates account sessions, optional Gmail permission, backgro
     assert.equal((await call('/api/connection')).status, 401);
     assert.equal(connections.get('userA').enabled, true);
     assert.equal((await call('/api/cron', 'wrong')).status, 401);
+    assert.equal((await call('/api/cron', 'crön-secret')).status, 401);
     assert.equal((await call('/api/cron', 'cron-secret')).status, 200);
     sessions.set('signed-in-A', { id: 'userA', email: 'a@example.com', googleSub: 'googleA' });
     assert.equal((await call('/api/connection', 'signed-in-A', 'DELETE')).status, 200);
@@ -82,4 +84,30 @@ test('hosted flow separates account sessions, optional Gmail permission, backgro
     assert.equal((await call('/api/connection')).status, 200);
     assert.equal(expenses[0].id, 'manual');
   } finally { await new Promise(resolve => server.close(resolve)); }
+});
+
+test('Gmail readiness requires its callback as well as client credentials', async () => {
+  for (const [redirectUri, expected] of [[undefined, false], ['', false], ['https://ledger.example/api/oauth/google/callback', true]]) {
+    const handler = createHostedHandler({ clientId: 'client', clientSecret: 'secret', redirectUri, allowedOrigins: [] }, { store: {}, cipher: {}, google: {} });
+    let status;
+    let body;
+    await handler({ method: 'GET', url: '/api/health', headers: {} }, { setHeader() {}, writeHead(value) { status = value; }, end(value) { body = JSON.parse(value); } });
+    assert.equal(status, 200);
+    assert.equal(body.gmailConfigured, expected);
+  }
+});
+
+test('disconnect cancellation stays cancelled in sync history instead of becoming an error', async () => {
+  const updates = [];
+  const store = new HostedStore({ from(table) {
+    return {
+      update(fields) { updates.push({ table, fields }); return this; },
+      eq() { return this; },
+      then(resolve) { return Promise.resolve({ data: [], error: null }).then(resolve); },
+    };
+  } });
+  await store.failScan('user', 'lease', 'run', 'Disconnected during scan', false, true);
+  const history = updates.find(update => update.table === 'ledger_sync_history');
+  assert.equal(history.fields.status, 'cancelled');
+  assert.equal(history.fields.error, null);
 });

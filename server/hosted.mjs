@@ -6,6 +6,7 @@ import { createTokenCipher } from './cipher.mjs';
 import { HostedStore } from './store.mjs';
 import { createGoogleClient, GMAIL_SCOPE, ProviderError, syncMailbox } from './gmail.mjs';
 import { isExpense } from '../src/expenses.ts';
+import { deleteLedgerAccount } from './account.mjs';
 
 const random = () => randomBytes(32).toString('base64url');
 const hash = value => createHash('sha256').update(value).digest('hex');
@@ -16,7 +17,7 @@ export function createHostedHandler(config, dependencies = {}) {
   const store = dependencies.store ?? (configured ? new HostedStore(createClient(config.supabaseUrl, config.supabaseSecret, { auth: { persistSession: false, autoRefreshToken: false } })) : null);
   const cipher = dependencies.cipher ?? (configured ? createTokenCipher(config.encryptionKey) : null);
   const google = dependencies.google ?? createGoogleClient(config);
-  const gmailConfigured = Boolean(config.clientId && config.clientSecret);
+  const gmailConfigured = Boolean(config.clientId && config.clientSecret && config.redirectUri);
   const json = (response, status, data) => { response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' }); response.end(JSON.stringify(data)); };
 
   async function scan(userId) {
@@ -38,7 +39,7 @@ export function createHostedHandler(config, dependencies = {}) {
       return { ...result, ...committed, expenses: [] }; // Records are already committed to PostgreSQL.
     } catch (error) {
       const safe = error instanceof ProviderError ? error.message : 'The email scan could not finish. Try again.';
-      await store.failScan(userId, connection.lease, run, safe, error instanceof ProviderError && error.status === 401).catch(() => {});
+      await store.failScan(userId, connection.lease, run, safe, error instanceof ProviderError && error.status === 401, error instanceof ProviderError && error.status === 409).catch(() => {});
       throw error instanceof ProviderError ? error : new ProviderError(safe);
     }
   }
@@ -60,7 +61,7 @@ export function createHostedHandler(config, dependencies = {}) {
       const origin = request.headers.origin;
       if (origin && !config.allowedOrigins.includes(origin)) return json(response, 403, { error: 'Origin not allowed.' });
       if (origin) { response.setHeader('Access-Control-Allow-Origin', origin); response.setHeader('Vary', 'Origin'); }
-      if (request.method === 'OPTIONS') { response.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type'); response.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS'); response.writeHead(204); response.end(); return; }
+      if (request.method === 'OPTIONS') { response.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Ledger-Confirm-Deletion'); response.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS'); response.writeHead(204); response.end(); return; }
       const url = new URL(request.url, 'https://ledger.invalid');
       if (url.pathname === '/api/health') return json(response, 200, { ok: true, databaseConfigured: Boolean(store), gmailConfigured });
       if (!store || !cipher) return json(response, 503, { error: 'The account service is temporarily unavailable.' });
@@ -68,7 +69,9 @@ export function createHostedHandler(config, dependencies = {}) {
       if (url.pathname === '/api/cron') {
         const expected = `Bearer ${config.cronSecret ?? ''}`;
         const supplied = request.headers.authorization ?? '';
-        if (!config.cronSecret || supplied.length !== expected.length || !timingSafeEqual(Buffer.from(supplied), Buffer.from(expected))) return json(response, 401, { error: 'Unauthorized' });
+        const expectedBytes = Buffer.from(expected);
+        const suppliedBytes = Buffer.from(supplied);
+        if (!config.cronSecret || suppliedBytes.length !== expectedBytes.length || !timingSafeEqual(suppliedBytes, expectedBytes)) return json(response, 401, { error: 'Unauthorized' });
         await store.purgeExpiredAttempts();
         for (const item of await store.revokePending(10)) await disconnect(item.user_id).catch(() => {});
         const results = [];
@@ -110,6 +113,11 @@ export function createHostedHandler(config, dependencies = {}) {
       const token = request.headers.authorization?.match(/^Bearer (\S+)$/)?.[1];
       const user = token ? await store.authenticate(token) : null;
       if (!user) return json(response, 401, { error: 'Sign in to Ledger to continue.' });
+      if (url.pathname === '/api/account' && request.method === 'DELETE') {
+        if (request.headers['x-ledger-confirm-deletion'] !== 'true') return json(response, 400, { error: 'Confirm account deletion in Ledger before continuing.' });
+        await deleteLedgerAccount({ userId: user.id, sessionToken: token, disconnect, store });
+        return json(response, 200, { deleted: true });
+      }
       if (url.pathname === '/api/connection' && request.method === 'GET') {
         const record = await store.connection(user.id);
         return json(response, 200, { connected: Boolean(record?.enabled && record.status === 'connected'), email: record?.email, status: record?.status ?? 'disconnected', error: record?.last_error, lastSync: record?.last_sync_at, hasMore: Boolean(record?.next_page_token), backgroundTracking: true, scanSchedule: 'daily' });

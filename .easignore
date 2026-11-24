@@ -1,0 +1,27 @@
+# Mobile build source excludes local credentials and server-only files.
+node_modules/
+.git/
+.expo/
+.vercel/
+dist/
+dist-android-check/
+web-build/
+android/
+ios/
+.env
+.env.*
+!.env.example
+!.env.server.example
+server/
+api/
+supabase/
+.impeccable/
+.claude/
+*.log
+*.pem
+*.key
+*.jks
+*.p8
+*.p12
+*.mobileprovision
+*.tsbuildinfo
