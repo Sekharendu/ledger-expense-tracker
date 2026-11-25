@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Ledger",
-    "slug": "ledger-expenses",
+    "slug": "ledger-finance-tracker",
     "scheme": "ledger",
     "plugins": [
       "expo-router",
@@ -30,6 +30,17 @@
     "web": {
       "output": "single",
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "59a4ab3a-372c-4f96-9226-2a164ba457e9"
+      }
+    },
+    "owner": "andromeda-666"
   }
 }

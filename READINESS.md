@@ -64,6 +64,8 @@ Updated: 25 November 2026. An item is checked only after its stated evidence exi
 
 ## 6. Build and test Android
 
+- [x] Owner created an Expo account, completed private CLI browser sign-in, and linked existing Ledger source to `@andromeda-666/ledger-finance-tracker`; project ID verified via EAS project info (25 November).
+
 - [x] Android JavaScript bundle exported successfully.
 - [x] Prepare preview APK and production AAB profiles, application/version identifiers and secret-safe mobile upload exclusions (`eas.json`, `.easignore`, `ANDROID_RELEASE.md`).
 - [ ] Configure and verify the production public environment variables in the authorized Expo build project.
@@ -90,7 +92,7 @@ Updated: 25 November 2026. An item is checked only after its stated evidence exi
 
 1. Enable Gmail API and create the Ledger Gmail Web OAuth client in Google Cloud; put its client ID and secret in ignored `.env.server`. Upload through the prepared helper, redeploy, then test one real import, duplicate rescan and disconnect.
 2. Test Google login through the production Vercel URL; local login is now confirmed.
-3. Create an Expo account (owner says none exists), log in privately, link Ledger, configure public build variables and produce a preview APK within the available allowance. Install and test on Android.
+3. Expo login and project linking are complete. Configure public build variables and produce a preview APK within the available allowance, then install and test on Android.
 4. App display name is Ledger (owner choice). Collect the public support email and operator details, complete the privacy notice, then finish Google branding and the required review for the intended audience. A custom authentication hostname requires an owner-selected domain and a paid Supabase add-on.
 
 ## Current user-dependent items
@@ -98,5 +100,5 @@ Updated: 25 November 2026. An item is checked only after its stated evidence exi
 - A Google sign-in and Gmail grant require the account owner's browser interaction; no agent test substitutes for actual consent.
 - Google Gmail OAuth client credentials are not yet present in the private app configuration.
 - Production private secret transfer, GitHub deployment, live database/API validation and temporary-account deletion checks are complete. Gmail is still unconfigured.
-- Expo CLI reports `Not logged in`; no Expo project is linked. No APK/AAB or signing credentials have been generated.
+- Expo CLI login succeeded; project `@andromeda-666/ledger-finance-tracker` (`59a4ab3a-372c-4f96-9226-2a164ba457e9`) is linked and verified. No APK/AAB or signing credentials have been generated.
 - Privacy-policy operator identity/contact, the intended public audience, and an authorized mobile build/publishing account must be confirmed before claiming public-launch readiness.

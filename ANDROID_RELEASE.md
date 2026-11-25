@@ -9,6 +9,10 @@ The app targets Expo SDK 58, Android package `com.ledger.expensetracker`, and th
 
 `eas.json` defines those profiles. `.easignore` excludes local credentials, server data and backend-only source from the mobile build upload. Server secrets must never be added to an Expo public variable or mobile build configuration.
 
+## Linked Expo project
+
+Verified on 25 November 2026: `@andromeda-666/ledger-finance-tracker`, project ID `59a4ab3a-372c-4f96-9226-2a164ba457e9`. The existing source was linked with EAS init; no new app folder was created. CLI login succeeded. Public build variables, build allowance and signing setup still need verification before the first APK build.
+
 ## Account setup before the first cloud build
 
 An Expo account and a linked Expo project are required. Check with `npx eas-cli@latest whoami`, then link/create the intended Ledger project using `npx eas-cli@latest init`. Confirm the owner and project before generating signing credentials or starting a build.
