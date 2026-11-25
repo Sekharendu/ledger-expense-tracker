@@ -11,7 +11,7 @@ Updated: 25 November 2026. An item is checked only after its stated evidence exi
 - [x] Supabase project `oxwrqvpfwgkffppczixx` is healthy; public and backend credentials validated without displaying secrets.
 - [x] Ledger's five PostgreSQL tables are created with RLS enabled.
 - [x] Google identity sign-in is enabled in Supabase. Local web and native OAuth initiation reach Google with identity scopes only.
-- [x] Integrated validation: 55 tests passed; TypeScript, lint, web export and Android Hermes export passed. This is not an APK/device test.
+- [x] Integrated validation: 76 tests passed; TypeScript, lint, web export and Android Hermes export passed. This is not an APK/device test.
 
 ## 1. Finish production sign-in
 
@@ -45,7 +45,7 @@ Updated: 25 November 2026. An item is checked only after its stated evidence exi
 - [x] Install Gmail client ID, secret and canonical callback in Vercel production through CLI stdin; local ignored server configuration is also loaded. No secret values displayed.
 - [x] Fresh GitHub-source deployment `dpl_AjdjRQ6M6pxBfPhNiQPuyZkGvaNU` is READY on commit `670f064`; live health returns databaseConfigured=true and gmailConfigured=true. Anonymous connection requests return401; invalid OAuth callbacks return400.
 - [x] Owner approved Gmail access. A real forwarded GST invoice PDF was read and imported through the hosted scan pipeline into PostgreSQL review records (25 November); repeat scan added zero and reported one duplicate.
-- [x] Deployed enabled cron `/api/cron` uses `15 0 * * *` on Vercel Hobby: daily, nominally 05:45 IST with timing variation within an hour. Function duration is 300 seconds. Source selects up to 20 accounts and 25 messages per mailbox per scan.
+- [x] Replace daily Vercel scheduling with an enabled fifteen-minute Supabase recovery job calling `/api/cron`. Function duration remains 300 seconds. Scans discover new matching messages first and continue a bounded-time backfill queue.
 - [x] Bound Gmail processing to a shared 90-second mailbox deadline, including token refresh, requests, retries and PDF workers. Completed messages resume through an ID-only cursor; zero-progress timeout is explicit and retryable. Five added regressions pass.
 - [ ] Verify timing and resume behavior against real attachment-heavy Gmail messages. An exceptionally slow single message can remain pending with a visible timeout and require manual entry.
 - [x] Prepare `npm run configure:gmail` for private credential upload; configuration check now passes and credentials are installed. Real consent/import remains pending.
@@ -93,7 +93,7 @@ Updated: 25 November 2026. An item is checked only after its stated evidence exi
 
 ## Next work, in order
 
-1. Gmail credentials/callback are configured locally and in production. Verify Gmail API is enabled, then approve Settings → Connect Gmail and test one real import, duplicate rescan and disconnect.
+1. Finish the project-specific Google Cloud Pub/Sub setup, verify a live watch/notification and observe a new invoice imported automatically. Gmail consent, a real PDF import, payment detection and duplicate prevention are already verified.
 2. Test Google login through the production Vercel URL; local login is now confirmed.
 3. Expo login and project linking are complete. Configure public build variables and produce a preview APK within the available allowance, then install and test on Android.
 4. App display name is Ledger (owner choice). Collect the public support email and operator details, complete the privacy notice, then finish Google branding and the required review for the intended audience. A custom authentication hostname requires an owner-selected domain and a paid Supabase add-on.
@@ -105,3 +105,19 @@ Updated: 25 November 2026. An item is checked only after its stated evidence exi
 - Production private secret transfer, GitHub deployment, live database/API validation and temporary-account deletion checks are complete. Gmail configuration is now enabled; real PDF import and duplicate prevention are now verified.
 - Expo CLI login succeeded; project `@andromeda-666/ledger-finance-tracker` (`59a4ab3a-372c-4f96-9226-2a164ba457e9`) is linked and verified. No APK/AAB or signing credentials have been generated.
 - Privacy-policy operator identity/contact, the intended public audience, and an authorized mobile build/publishing account must be confirmed before claiming public-launch readiness.
+
+## Automatic tracking — 25 November
+
+- [x] Implement authenticated Gmail Pub/Sub receiver, per-mailbox watch registration, daily renewal, safe disconnect and retry behavior. Unit/HTTP tests pass; live Google delivery is tracked separately below.
+- [x] Apply private processed-message cache, parser revision tracking, atomic scan commits and watch metadata to hosted Supabase. Client roles cannot access these records.
+- [x] Configure the fifteen-minute recovery job in Supabase with its dedicated credential in Vault; safe status reports enabled=true and schedule */15 * * * *. Actual scheduled HTTP completion remains to verify below.
+- [x] Implement active-only 30-second saved-expense refresh and Settings metadata refresh, foreground/focus refresh and account/unmount cleanup. Four fake-clock lifecycle tests pass; device/browser observation remains separate.
+- [x] Prepare the project-specific Cloud Shell setup script for ledger-expense-tracker-515710; syntax and dry-run plan verified.
+- [x] Integrated automatic-tracking regression suite: 76 tests passed; final TypeScript/lint and setup-script dry-run checks passed.
+- [ ] Publish and verify the new deployment with the recovery and push settings.
+- [ ] Owner runs the Google Cloud Shell setup for topic, publisher permission, dedicated delivery identity and authenticated subscription.
+- [ ] Verify a live registered watch and a real Google-signed notification reaches the deployed receiver.
+- [ ] Observe a new billing email imported without a manual scan and automatic dashboard refresh.
+- [ ] Verify a recovery scheduler HTTP response succeeds and run hosted security advisors.
+
+Pub/Sub is the primary trigger; fifteen-minute recovery covers dropped notifications and watch renewal. Delivery may be delayed. The MVP discovers newest matching billing IDs plus backfill rather than processing every Gmail history event. Existing manual corrections remain preserved. No Cloud billing plan is changed by the app code or Supabase setup.

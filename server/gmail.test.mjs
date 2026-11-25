@@ -79,6 +79,40 @@ test('Gmail 403 rate-limit errors retry, while permission failures do not', asyn
   assert.equal(calls, 1);
 });
 
+test('watch subscribes to all mailbox changes via POST and stop sends an empty POST body', async () => {
+  const calls = [];
+  const controller = new AbortController();
+  const google = createGoogleClient({ fetcher: async (url, options) => {
+    calls.push({ url, ...options });
+    return new Response(JSON.stringify(url.endsWith('/watch') ? { historyId: '12345', expiration: '1900000000000' } : {}));
+  } });
+  assert.deepEqual(await google.watch('access-token', 'projects/ledger-project/topics/gmail-events', { signal: controller.signal }), { historyId: '12345', expiration: '1900000000000' });
+  assert.equal(calls[0].method, 'POST');
+  assert.deepEqual(JSON.parse(calls[0].body), { topicName: 'projects/ledger-project/topics/gmail-events' });
+  assert.equal(calls[0].headers.Authorization, 'Bearer access-token');
+  assert.equal(calls[0].headers['Content-Type'], 'application/json');
+  assert.deepEqual(await google.stopWatch('access-token'), {});
+  assert.equal(calls[1].method, 'POST');
+  assert.equal(calls[1].body, undefined);
+  assert.ok(calls[1].url.endsWith('/stop'));
+  await google.api('/profile', 'access-token');
+  assert.equal(calls[2].method, undefined);
+  assert.equal(calls[2].body, undefined);
+  controller.abort();
+  assert.equal(calls[0].signal.aborted, true);
+});
+
+test('watch retries transient errors but stop does not treat configuration errors as success', async () => {
+  let requests = 0;
+  const google = createGoogleClient({ sleep: async () => {}, fetcher: async () => ++requests === 1 ? new Response('{}', { status: 503 }) : new Response('{"historyId":"123","expiration":"1900000000000"}') });
+  assert.equal((await google.watch('token', 'projects/project/topics/topic')).historyId, '123');
+  assert.equal(requests, 2);
+  for (const status of [400, 401, 403, 404]) {
+    const denied = createGoogleClient({ fetcher: async () => new Response('{}', { status }) });
+    await assert.rejects(denied.stopWatch('token'), error => error instanceof ProviderError && error.status === status);
+  }
+});
+
 test('response byte limits are reported distinctly from temporary provider failures', async () => {
   await assert.rejects(readJson(new Response(JSON.stringify({ large: 'x'.repeat(100) })), 10), error => error instanceof ProviderError && error.status === 413);
 });
@@ -158,6 +192,63 @@ test('a provider request timeout stays retryable instead of marking an email ski
   await assert.rejects(syncMailbox({ email: 'me@example.com', api: async (...args) => args[0].startsWith('/messages?') ? { messages: [{ id: 'slow' }] } : client.api(...args) }), error => error instanceof ProviderError && error.status === 502);
 });
 
+test('processed IDs avoid fetching old PDFs and fresh messages precede ongoing backfill', async () => {
+  const routes = [];
+  const result = await syncMailbox({ email: 'me@example.com', pageToken: 'backfill', getProcessed: async ids => { assert.deepEqual(ids, ['old-pdf', 'new', 'older']); return ['old-pdf']; }, api: async route => {
+    routes.push(route);
+    if (route.startsWith('/messages?')) return route.includes('pageToken=backfill') ? { messages: [{ id: 'older' }], nextPageToken: 'backfill-2' } : { messages: [{ id: 'old-pdf' }, { id: 'new' }] };
+    assert.doesNotMatch(route, /old-pdf/);
+    return fixture([{ mimeType: 'text/plain', body: { data: encoded('Payment successful\nTotal INR 10') } }], route.includes('/new?') ? 'new' : 'older');
+  } });
+  assert.deepEqual(result.processedMessageIds, ['new', 'older']);
+  assert.equal(result.nextPageToken, 'backfill-2');
+  assert.match(routes[2], /\/new\?/);
+  assert.equal(result.expenses.length, 2);
+});
+
+test('invalid provider pagination restarts from head while retaining handled message exclusions', async () => {
+  const result = await syncMailbox({ email: 'me@example.com', pageToken: 'expired', getProcessed: async () => ['handled'], api: async route => {
+    if (route.includes('pageToken=expired')) throw new ProviderError('expired page', 400);
+    if (route.startsWith('/messages?')) return { messages: [{ id: 'handled' }, { id: 'new' }], nextPageToken: 'fresh-backfill' };
+    assert.match(route, /\/new\?/);
+    return fixture([{ mimeType: 'text/plain', body: { data: encoded('Receipt\nTotal INR 10') } }], 'new');
+  } });
+  assert.deepEqual(result.processedMessageIds, ['new']);
+  assert.equal(result.nextPageToken, 'fresh-backfill');
+});
+
+test('deadline saves unseen head and backfill IDs, not bodies; retry resumes and skips committed IDs', async () => {
+  const controller = new AbortController();
+  const first = await syncMailbox({ email: 'me@example.com', pageToken: 'backfill', signal: controller.signal, getProcessed: async () => [], api: async route => {
+    if (route.startsWith('/messages?')) return route.includes('pageToken=backfill') ? { messages: [{ id: 'older' }], nextPageToken: 'backfill-2' } : { messages: [{ id: 'new' }] };
+    if (route.includes('/older?')) { controller.abort(); throw controller.signal.reason; }
+    return fixture([{ mimeType: 'text/plain', body: { data: encoded('Receipt\nTotal INR 10') } }], 'new');
+  } });
+  assert.deepEqual(first.processedMessageIds, ['new']);
+  const cursor = JSON.parse(Buffer.from(first.nextPageToken.split(':')[1], 'base64url').toString());
+  assert.deepEqual(cursor, { messages: [{ id: 'older' }], nextPageToken: 'backfill-2' });
+  const second = await syncMailbox({ email: 'me@example.com', pageToken: first.nextPageToken, getProcessed: async () => ['new'], api: async route => {
+    if (route.startsWith('/messages?')) return { messages: [{ id: 'new' }, { id: 'newest' }] };
+    assert.doesNotMatch(route, /\/new\?/);
+    return fixture([{ mimeType: 'text/plain', body: { data: encoded('Receipt\nTotal INR 10') } }], route.includes('/newest?') ? 'newest' : 'older');
+  } });
+  assert.deepEqual(second.processedMessageIds, ['newest', 'older']);
+  assert.equal(second.nextPageToken, 'backfill-2');
+});
+
+test('deleted messages are durably handled, but transient provider failures remain retryable', async () => {
+  const result = await syncMailbox({ email: 'me@example.com', getProcessed: async () => [], api: async route => {
+    if (route.startsWith('/messages?')) return { messages: [{ id: 'deleted' }] };
+    throw new ProviderError('deleted', 404);
+  } });
+  assert.deepEqual(result.processedMessageIds, ['deleted']);
+  assert.equal(result.skipped.length, 1);
+  await assert.rejects(syncMailbox({ email: 'me@example.com', getProcessed: async () => [], api: async route => {
+    if (route.startsWith('/messages?')) return { messages: [{ id: 'transient' }] };
+    throw new ProviderError('temporary', 502);
+  } }), error => error.status === 502);
+});
+
 function textPdf(text) {
   const stream = `BT /F1 12 Tf 50 750 Td (${text}) Tj ET`;
   const objects = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R] /Count 1 >>', '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>', '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>', `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`];
@@ -172,4 +263,15 @@ test('real PDF text extraction reads an invoice and rejects invalid PDFs', async
   const text = await extractPdfText(textPdf('Invoice Total: INR 1499.00'));
   assert.match(text, /INR 1499.00/);
   await assert.rejects(extractPdfText(Buffer.from('not a pdf')));
+});
+
+test('cached head IDs do not hide a zero-progress timeout on an unfinished message', async () => {
+  const controller = new AbortController();
+  await assert.rejects(syncMailbox({ email: 'me@example.com', signal: controller.signal,
+    getProcessed: async () => ['cached'],
+    api: async route => {
+      if (route.startsWith('/messages?')) return { messages: [{ id: 'cached' }, { id: 'unfinished' }] };
+      controller.abort(); throw controller.signal.reason;
+    },
+  }), error => error.status === 504);
 });

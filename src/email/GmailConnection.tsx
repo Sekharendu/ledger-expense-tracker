@@ -11,6 +11,7 @@ type Props = {
 
 export function GmailConnection({ onImport, disabled, Button, styles: s }: Props) {
   const gmail = useGmail(onImport);
+  const schedule = gmail.connection.scanSchedule === 'every15minutes' ? 'about every 15 minutes' : gmail.connection.scanSchedule === 'daily' ? 'daily' : 'periodically';
   return <View style={s.settingSection}>
     <Text accessibilityRole="header" style={s.settingTitle}>Gmail invoices</Text>
     <Text style={s.intro}>{gmail.connection.connected ? `Connected to ${gmail.connection.email}. Read-only access to find billing emails from the last 90 days.` : 'Connect Gmail to find receipts, invoices and refunds. Ledger requests read-only access; it cannot send or delete emails.'}</Text>
@@ -18,9 +19,10 @@ export function GmailConnection({ onImport, disabled, Button, styles: s }: Props
     {gmail.connection.status === 'revoke_pending' && <Text style={s.intro}>Tracking is stopped. Google access could not be revoked yet; retry Disconnect to finish.</Text>}
     {gmail.waiting && <Text accessibilityLiveRegion="polite" style={s.intro}>Waiting for Google sign-in. Finish in the browser, then return here.</Text>}
     {gmail.connection.connected && <>
-      <Button label={gmail.busy ? 'Scanning invoices…' : 'Scan recent invoices'} onPress={() => { void gmail.sync(); }} disabled={disabled || gmail.busy} />
-      {gmail.hasMore && <Button label="Scan next 25 billing emails" onPress={() => { void gmail.sync(); }} secondary disabled={disabled || gmail.busy} />}
-      <Text style={s.caption}>Each scan checks up to 25 matching emails. Clear full-payment evidence and a document date let Ledger mark an expense paid automatically. Other imports need review. Text PDFs are supported; scanned images and currency conversion are not.</Text>
+      <Text style={s.intro}>{gmail.connection.watchConnected ? `New-mail notifications trigger automatic checks. Delivery may be delayed; recovery checks run ${schedule}.` : `Automatic checks run ${schedule}. New-mail notifications are not connected yet.`}</Text>
+      <Button label={gmail.busy ? 'Checking invoices…' : 'Check now'} onPress={() => { void gmail.sync(); }} disabled={disabled || gmail.busy} />
+      {gmail.hasMore && <Button label="Continue checking older invoices" onPress={() => { void gmail.sync(); }} secondary disabled={disabled || gmail.busy} />}
+      <Text style={s.caption}>Clear full-payment evidence and a document date let Ledger mark an expense paid automatically. Other imports need review. Text PDFs are supported; scanned images and currency conversion are not.</Text>
       {!!gmail.connection.lastSync && <Text style={s.muted}>Last scan: {new Date(gmail.connection.lastSync).toLocaleString('en-IN')}</Text>}
     </>}
     {!!gmail.error && <Text accessibilityRole="alert" style={s.error}>{gmail.error}</Text>}
@@ -33,6 +35,6 @@ export function GmailConnection({ onImport, disabled, Button, styles: s }: Props
       </>}
     </View>}
     {gmail.hasSession && <Button label={gmail.waiting ? 'Cancel Gmail connection' : 'Disconnect Gmail'} onPress={gmail.disconnect} secondary disabled={gmail.busy} />}
-    <Text style={s.caption}>Automatic checks run daily and continue while you are signed out. Disconnecting stops future scans and revokes Gmail access. Existing expenses remain in your account.</Text>
+    <Text style={s.caption}>While Gmail is connected, background tracking continues when the app is closed or you are signed out. Your dashboard refreshes about every 30 seconds while the app is open. Disconnecting stops future scans and revokes Gmail access. Existing expenses remain in your account.</Text>
   </View>;
 }

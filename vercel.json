@@ -12,6 +12,5 @@
   "rewrites": [
     { "source": "/api/:path*", "destination": "/api/index" },
     { "source": "/((?!_expo/|assets/|favicon.ico).*)", "destination": "/index.html" }
-  ],
-  "crons": [{ "path": "/api/cron", "schedule": "15 0 * * *" }]
+  ]
 }

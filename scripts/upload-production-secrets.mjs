@@ -12,8 +12,17 @@ import { Buffer } from 'node:buffer';
 const project = 'prj_ignV7OJ4o5b9g1jydG8B7mGbUgDO';
 const team = 'team_bYa60xKUiiqr9GNKYGfTF2nZ';
 const gmail = process.argv.includes('--gmail');
-const names = gmail ? ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI'] : ['SUPABASE_SECRET_KEY', 'TOKEN_ENCRYPTION_KEY', 'CRON_SECRET'];
+const push = process.argv.includes('--push');
+if (gmail && push) throw new Error('Choose either Gmail credentials or push configuration.');
+const names = push ? ['GMAIL_PUBSUB_TOPIC', 'GMAIL_PUBSUB_SUBSCRIPTION', 'GMAIL_PUBSUB_SERVICE_ACCOUNT', 'GMAIL_PUBSUB_AUDIENCE', 'EMAIL_RECOVERY_ENABLED'] : gmail ? ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI'] : ['SUPABASE_SECRET_KEY', 'TOKEN_ENCRYPTION_KEY', 'CRON_SECRET'];
 const values = parseEnv(await readFile(new URL('../.env.server', import.meta.url), 'utf8'));
+if (push) Object.assign(values, {
+  GMAIL_PUBSUB_TOPIC: 'projects/ledger-expense-tracker-515710/topics/ledger-gmail-incoming',
+  GMAIL_PUBSUB_SUBSCRIPTION: 'projects/ledger-expense-tracker-515710/subscriptions/ledger-gmail-push',
+  GMAIL_PUBSUB_SERVICE_ACCOUNT: 'ledger-gmail-push@ledger-expense-tracker-515710.iam.gserviceaccount.com',
+  GMAIL_PUBSUB_AUDIENCE: 'https://ledger-expense-tracker-sekharendus-projects.vercel.app/api/gmail/notifications',
+  EMAIL_RECOVERY_ENABLED: 'true',
+});
 const gmailCallback = 'https://ledger-expense-tracker-sekharendus-projects.vercel.app/api/oauth/google/callback';
 if (gmail) values.GOOGLE_REDIRECT_URI ||= gmailCallback;
 const missing = names.filter(name => !values[name]);
@@ -21,7 +30,10 @@ if (missing.length) {
   console.log(JSON.stringify({ ready: false, missingVariables: missing, secretValuesDisplayed: false }));
   process.exit(1);
 }
-if (gmail) {
+if (push) {
+  // Fixed public configuration for the owner's approved project. Activate the
+  // recovery scheduler before publishing EMAIL_RECOVERY_ENABLED=true.
+} else if (gmail) {
   if (!values.GOOGLE_CLIENT_ID.endsWith('.apps.googleusercontent.com')) throw new Error('Use the Google Web application OAuth client ID.');
   if (values.GOOGLE_REDIRECT_URI !== gmailCallback) throw new Error('The Gmail production callback must match GMAIL_SETUP.md exactly.');
 } else {
@@ -48,8 +60,8 @@ if (process.argv.includes('--check')) {
   }
   await vercel(['whoami']);
   for (const name of names) {
-    const type = gmail && name !== 'GOOGLE_CLIENT_SECRET' ? 'config' : 'secret';
-    await vercel(['env', 'add', name, '--environment', 'production', '--type', type, '--project', project, '--scope', team, '--yes', ...(gmail ? ['--force'] : [])], values[name]);
+    const type = push || (gmail && name !== 'GOOGLE_CLIENT_SECRET') ? 'config' : 'secret';
+    await vercel(['env', 'add', name, '--environment', 'production', '--type', type, '--project', project, '--scope', team, '--yes', ...(gmail || push ? ['--force'] : [])], values[name]);
     console.log(`Configured ${name} for production.`);
   }
   console.log('Production secrets configured. A new production deployment is required.');

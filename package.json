@@ -45,11 +45,12 @@
     "build:web": "expo export --platform web",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "node --test src/expenses.test.ts src/email/parser.test.ts src/email/payment.test.ts server/*.test.mjs",
+    "test": "node --test src/expenses.test.ts src/refresh.test.ts src/email/parser.test.ts src/email/payment.test.ts server/*.test.mjs",
     "email": "node --env-file-if-exists=.env.server server/index.mjs",
     "email:dev": "node --watch --env-file-if-exists=.env.server server/index.mjs",
     "configure:production": "node scripts/upload-production-secrets.mjs",
     "configure:gmail": "node scripts/upload-production-secrets.mjs --gmail",
+    "configure:push": "node scripts/upload-production-secrets.mjs --push",
     "verify:hosted": "node scripts/verify-hosted-data.mjs --run"
   },
   "private": true,

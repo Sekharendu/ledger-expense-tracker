@@ -12,6 +12,7 @@ test('hosted flow separates account sessions, optional Gmail permission, backgro
   const connections = new Map();
   const sessions = new Map([['signed-in-A', { id: 'userA', email: 'a@example.com', googleSub: 'googleA' }], ['signed-in-B', { id: 'userB', email: 'b@example.com', googleSub: 'googleB' }]]);
   const expenses = [{ id: 'manual', userId: 'userA' }];
+  const processed = new Set();
   let state;
   let nonce;
   let revoked = false;
@@ -28,7 +29,8 @@ test('hosted flow separates account sessions, optional Gmail permission, backgro
     updateLeaseTokens: async (id, lease, tokens) => { const row = connections.get(id); if (!row.enabled || row.lease !== lease) return null; row.encrypted_tokens = tokens; return { user_id: id }; },
     claimScan: async id => { const row = connections.get(id); if (!row?.enabled || row.lease) return null; row.lease = 'lease'; return structuredClone(row); },
     startRun: async () => 'run',
-    commitScan: async (id, lease, _run, items) => { const row = connections.get(id); if (!row.enabled || row.lease !== lease) return { cancelled: true }; let added = 0; for (const item of items) if (!expenses.some(old => old.id === item.id && old.userId === id)) { expenses.push({ ...item, userId: id }); added++; } row.lease = null; row.last_sync_at = new Date().toISOString(); return { added, duplicates: items.length - added }; },
+    processedMessages: async (id, ids) => ids.filter(message => processed.has(`${id}:${message}`)),
+    commitScan: async (id, lease, _run, items, result) => { const row = connections.get(id); if (!row.enabled || row.lease !== lease) return { cancelled: true }; let added = 0; for (const item of items) if (!expenses.some(old => old.id === item.id && old.userId === id)) { expenses.push({ ...item, userId: id }); added++; } for (const message of result.processedMessageIds) processed.add(`${id}:${message}`); row.next_page_token = result.nextPageToken; row.lease = null; row.last_sync_at = new Date().toISOString(); return { added, duplicates: items.length - added }; },
     failScan: async id => { connections.get(id).lease = null; },
     purgeExpiredAttempts: async () => {},
     revokePending: async () => [],

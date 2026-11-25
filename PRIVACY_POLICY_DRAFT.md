@@ -25,7 +25,7 @@ Ledger uses account information to sign you in and separate your records from ot
 
 ## Services involved
 
-Google handles Google sign-in and Gmail permission. Supabase provides account authentication and PostgreSQL storage. Vercel runs the hosted backend and scheduled scans. The Android app stores its sign-in session using device SecureStore; the browser preview uses sessionStorage. Server Google credentials are not embedded in the mobile app.
+Google handles Google sign-in and Gmail permission. Google Cloud Pub/Sub delivers mailbox-change metadata (email address and history identifier) to the backend when enabled. Supabase provides account authentication, PostgreSQL storage and recovery scheduling. Vercel runs the hosted backend and invoice processing. Ledger retains handled message IDs and extraction-version metadata to avoid repeatedly parsing the same emails. The Android app stores its sign-in session using device SecureStore; the browser preview uses sessionStorage. Server Google credentials are not embedded in the mobile app.
 
 The operator must verify the final providers, hosting regions and any additional analytics/support services before publishing this notice.
 

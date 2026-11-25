@@ -5,6 +5,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { convert } from 'html-to-text';
 import { parseBillingMessage } from '../src/email/parser.ts';
 import { OAuth2Client } from 'google-auth-library';
+import { GMAIL_PROCESSOR_VERSION } from './gmail-version.mjs';
 
 const API = 'https://gmail.googleapis.com/gmail/v1/users/me';
 export const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
@@ -61,10 +62,10 @@ export function createGoogleClient({ clientId, clientSecret, redirectUri, fetche
       throw new ProviderError('Gmail could not finish loading this email. Retry syncing.', 502);
     }
   }
-  async function requestApi(pathname, accessToken, limit, { signal } = {}) {
+  async function requestApi(pathname, accessToken, limit, { signal, method, body } = {}) {
     for (let attempt = 0; attempt < 3; attempt++) {
       signal?.throwIfAborted();
-      const response = await fetcher(`${API}${pathname}`, { headers: { Authorization: `Bearer ${accessToken}` }, signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000) });
+      const response = await fetcher(`${API}${pathname}`, { ...(method ? { method } : {}), headers: { Authorization: `Bearer ${accessToken}`, ...(body ? { 'Content-Type': 'application/json' } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000) });
       if (!response.ok) {
         const detail = await readJson(response, 64 * 1024).catch(() => null);
         signal?.throwIfAborted();
@@ -72,6 +73,7 @@ export function createGoogleClient({ clientId, clientSecret, redirectUri, fetche
         const rateLimited = response.status === 429 || (response.status === 403 && reasons.some(reason => ['rateLimitExceeded', 'userRateLimitExceeded'].includes(reason)));
         if ((rateLimited || response.status >= 500) && attempt < 2) { await abortable(sleep(1000 * 2 ** attempt, { signal }), signal); continue; }
         if (response.status === 401) throw new ProviderError('Gmail access expired or was revoked. Reconnect your account.', 401);
+        if (response.status === 400) throw new ProviderError('Gmail rejected this request or its expired page token.', 400);
         if (response.status === 404) throw new ProviderError('The Gmail message or attachment is no longer available.', 404);
         if (rateLimited) throw new ProviderError('Gmail rate limit reached. Wait a minute before syncing again.', 429);
         if (response.status === 403 && reasons.includes('dailyLimitExceeded')) throw new ProviderError('The Gmail API daily quota has been reached. Try syncing later.', 429);
@@ -95,6 +97,8 @@ export function createGoogleClient({ clientId, clientSecret, redirectUri, fetche
     exchange: (code, verifier) => tokenRequest({ code, code_verifier: verifier, redirect_uri: redirectUri, grant_type: 'authorization_code' }),
     refresh: (refreshToken, { signal } = {}) => tokenRequest({ refresh_token: refreshToken, grant_type: 'refresh_token' }, signal),
     profile: accessToken => api('/profile', accessToken, 64 * 1024),
+    watch: (accessToken, topicName, { signal } = {}) => api('/watch', accessToken, 64 * 1024, { signal, method: 'POST', body: { topicName } }),
+    stopWatch: (accessToken, { signal } = {}) => api('/stop', accessToken, 64 * 1024, { signal, method: 'POST' }),
     async revoke(token) {
       const response = await fetcher('https://oauth2.googleapis.com/revoke', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ token }), signal: AbortSignal.timeout(20_000) });
       await response.body?.cancel();
@@ -180,18 +184,35 @@ export async function syncMailbox({ budgetMs = SCAN_BUDGET_MS, signal: parentSig
   finally { clearTimeout(timer); }
 }
 
-async function syncPage({ api: providerApi, token, email, pageToken, pdfExtractor, signal }) {
+async function syncPage({ api: providerApi, token, email, pageToken, pdfExtractor, signal, getProcessed }) {
   const api = (path, accessToken, limit) => { signal.throwIfAborted(); return abortable(providerApi(path, accessToken, limit, { signal }), signal); };
   const accountKey = createHash('sha256').update(email.toLowerCase()).digest('hex').slice(0, 20);
   const query = 'newer_than:90d -in:spam -in:trash -in:sent {invoice receipt bill "payment successful" "payment received" "order confirmation" refund}';
   const parameters = new URLSearchParams({ q: query, maxResults: '25' });
   const continuation = pageToken?.startsWith(CURSOR_PREFIX) ? JSON.parse(Buffer.from(pageToken.slice(CURSOR_PREFIX.length), 'base64url').toString('utf8')) : null;
   if (pageToken && !continuation) parameters.set('pageToken', pageToken);
-  const list = continuation ?? await api(`/messages?${parameters}`, token, 256 * 1024);
+  let list;
+  if (getProcessed) {
+    const headParameters = new URLSearchParams({ q: query, maxResults: '25' });
+    const head = await api(`/messages?${headParameters}`, token, 256 * 1024);
+    if (continuation) list = continuation;
+    else if (pageToken) {
+      try { list = await api(`/messages?${parameters}`, token, 256 * 1024); }
+      catch (error) {
+        if (!(error instanceof ProviderError) || ![400, 404].includes(error.status)) throw error;
+        list = head; // Restart an expired provider cursor; processed IDs prevent reimports.
+      }
+    } else list = head;
+    const ids = [...new Set([...(head.messages ?? []), ...(list.messages ?? [])].map(item => item.id))];
+    list = { ...list, messages: ids.map(id => ({ id })) };
+  } else list = continuation ?? await api(`/messages?${parameters}`, token, 256 * 1024);
+  const processed = new Set(getProcessed ? await getProcessed((list.messages ?? []).map(item => item.id)) : []);
   const expenses = [];
   const skipped = [];
+  const processedMessageIds = [];
   let scanned = 0;
   for (const reference of list.messages ?? []) {
+    if (processed.has(reference.id)) { scanned++; continue; }
     try {
       const message = await api(`/messages/${encodeURIComponent(reference.id)}?format=full`, token);
       const result = await extractMessage(message, accountKey, api, token, pdfExtractor, { signal });
@@ -205,10 +226,11 @@ async function syncPage({ api: providerApi, token, email, pageToken, pdfExtracto
       const reason = error instanceof ProviderError && error.status === 404 ? 'Message or attachment was removed before it could be imported.' : error instanceof ProviderError && error.status === 413 ? 'Message exceeds the import size limit. Review it in Gmail.' : 'Could not extract this message. Review it in Gmail.';
       skipped.push({ messageId: reference.id, subject: 'Message could not be processed', reason });
     }
+    processedMessageIds.push(reference.id);
     scanned++;
   }
-  if (signal.aborted && !scanned) throw new ProviderError('This billing email could not finish within the scan time limit. Retry syncing; if it keeps failing, review the source email and add its expenses manually.', 504);
+  if (signal.aborted && !processedMessageIds.length) throw new ProviderError('This billing email could not finish within the scan time limit. Retry syncing; if it keeps failing, review the source email and add its expenses manually.', 504);
   const remaining = (list.messages ?? []).slice(scanned);
   const nextPageToken = remaining.length ? CURSOR_PREFIX + Buffer.from(JSON.stringify({ messages: remaining, nextPageToken: list.nextPageToken })).toString('base64url') : list.nextPageToken;
-  return { expenses, skipped, scanned, hasMore: Boolean(nextPageToken), nextPageToken, completedAt: new Date().toISOString() };
+  return { expenses, skipped, scanned, processedMessageIds, processorVersion: GMAIL_PROCESSOR_VERSION, hasMore: Boolean(nextPageToken), nextPageToken, completedAt: new Date().toISOString() };
 }

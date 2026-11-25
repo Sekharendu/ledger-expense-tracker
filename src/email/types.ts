@@ -38,6 +38,8 @@ export type Connection = {
   hasMore?: boolean;
   backgroundTracking?: boolean;
   scanSchedule?: string;
+  watchConnected?: boolean;
+  trackingMode?: 'push' | 'polling';
 };
 
 export function isEmailEvidence(value: unknown): value is EmailEvidence {

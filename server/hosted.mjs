@@ -7,6 +7,7 @@ import { HostedStore } from './store.mjs';
 import { createGoogleClient, GMAIL_SCOPE, ProviderError, SCAN_BUDGET_MS, syncMailbox } from './gmail.mjs';
 import { isExpense } from '../src/expenses.ts';
 import { deleteLedgerAccount } from './account.mjs';
+import { PUSH_PATH, pushConfigured, createNotificationReceiver, createWatchManager } from './gmail-push.mjs';
 
 const random = () => randomBytes(32).toString('base64url');
 const hash = value => createHash('sha256').update(value).digest('hex');
@@ -18,6 +19,8 @@ export function createHostedHandler(config, dependencies = {}) {
   const cipher = dependencies.cipher ?? (configured ? createTokenCipher(config.encryptionKey) : null);
   const google = dependencies.google ?? createGoogleClient(config);
   const gmailConfigured = Boolean(config.clientId && config.clientSecret && config.redirectUri);
+  const watches = createWatchManager(config, { store, cipher, google });
+  const receiveNotification = createNotificationReceiver(config, { store, scan, verifyToken: dependencies.verifyPushToken });
   const json = (response, status, data) => { response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' }); response.end(JSON.stringify(data)); };
 
   async function scan(userId) {
@@ -33,7 +36,7 @@ export function createHostedHandler(config, dependencies = {}) {
         tokens = { ...refreshed, refreshToken: refreshed.refreshToken ?? tokens.refreshToken };
         if (!await store.updateLeaseTokens(userId, connection.lease, cipher.seal(tokens))) throw new ProviderError('Gmail was disconnected during the scan.', 409);
       }
-      const result = await syncMailbox({ api: google.api, token: tokens.accessToken, email: connection.email, pageToken: connection.next_page_token, pdfExtractor: dependencies.pdfExtractor, signal });
+      const result = await syncMailbox({ api: google.api, token: tokens.accessToken, email: connection.email, pageToken: connection.next_page_token, pdfExtractor: dependencies.pdfExtractor, signal, getProcessed: ids => store.processedMessages(userId, ids, signal) });
       if (!result.expenses.every(isExpense)) throw new Error('Invalid parsed records');
       const committed = await store.commitScan(userId, connection.lease, run, result.expenses, result);
       if (committed.cancelled) throw new ProviderError('The scan was cancelled because Gmail was disconnected.', 409);
@@ -51,9 +54,10 @@ export function createHostedHandler(config, dependencies = {}) {
     if (!connection?.encrypted_tokens) return;
     // Disable before network revocation: no in-flight scan can commit after this write.
     await store.updateConnection(userId, { enabled: false, status: 'revoke_pending', next_sync_at: null, lease: null, lease_until: null });
+    await watches.stop(connection).catch(() => {});
     const tokens = cipher.open(connection.encrypted_tokens);
     await google.revoke(tokens.refreshToken ?? tokens.accessToken);
-    await store.updateConnection(userId, { status: 'disconnected', encrypted_tokens: null, last_error: null, next_page_token: null });
+    await store.updateConnection(userId, { status: 'disconnected', encrypted_tokens: null, last_error: null, next_page_token: null, gmail_watch_expires_at: null, gmail_watch_history_id: null, gmail_watch_topic: null, gmail_watch_error: null, gmail_watch_attempted_at: null });
   }
 
   return async function handler(request, response) {
@@ -64,8 +68,9 @@ export function createHostedHandler(config, dependencies = {}) {
       if (origin) { response.setHeader('Access-Control-Allow-Origin', origin); response.setHeader('Vary', 'Origin'); }
       if (request.method === 'OPTIONS') { response.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Ledger-Confirm-Deletion'); response.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS'); response.writeHead(204); response.end(); return; }
       const url = new URL(request.url, 'https://ledger.invalid');
-      if (url.pathname === '/api/health') return json(response, 200, { ok: true, databaseConfigured: Boolean(store), gmailConfigured });
+      if (url.pathname === '/api/health') return json(response, 200, { ok: true, databaseConfigured: Boolean(store), gmailConfigured, gmailPushConfigured: pushConfigured(config) });
       if (!store || !cipher) return json(response, 503, { error: 'The account service is temporarily unavailable.' });
+      if (url.pathname === PUSH_PATH) { await receiveNotification(request); response.writeHead(204); response.end(); return; }
 
       if (url.pathname === '/api/cron') {
         const expected = `Bearer ${config.cronSecret ?? ''}`;
@@ -78,6 +83,12 @@ export function createHostedHandler(config, dependencies = {}) {
         for (const item of await store.revokePending(10)) {
           if (Date.now() - started > 20_000) break;
           await disconnect(item.user_id).catch(() => {});
+        }
+        if (pushConfigured(config)) {
+          for (const item of await store.watchConnections(config.pubsubTopic, 20)) {
+            if (Date.now() - started > 40_000) break;
+            await watches.ensure(item.user_id);
+          }
         }
         const results = [];
         for (const item of await store.dueConnections(20)) {
@@ -105,6 +116,7 @@ export function createHostedHandler(config, dependencies = {}) {
           const profile = await google.profile(tokens.accessToken);
           const saved = await store.finishConnection(attempt.token_hash, profile.emailAddress, cipher.seal(tokens));
           if (!saved) throw new ProviderError('The Gmail connection was cancelled.', 409);
+          await watches.ensure(attempt.user_id);
           return finish(200, 'Gmail connected. Ledger can now scan your billing emails.');
         } catch (error) {
           if (tokens) await google.revoke(tokens.refreshToken ?? tokens.accessToken).catch(() => {});
@@ -124,7 +136,9 @@ export function createHostedHandler(config, dependencies = {}) {
       }
       if (url.pathname === '/api/connection' && request.method === 'GET') {
         const record = await store.connection(user.id);
-        return json(response, 200, { connected: Boolean(record?.enabled && record.status === 'connected'), email: record?.email, status: record?.status ?? 'disconnected', error: record?.last_error, lastSync: record?.last_sync_at, hasMore: Boolean(record?.next_page_token), backgroundTracking: true, scanSchedule: 'daily' });
+        const connected = Boolean(record?.enabled && record.status === 'connected');
+        const watchConnected = connected && pushConfigured(config) && record.gmail_watch_topic === config.pubsubTopic && Date.parse(record.gmail_watch_expires_at) > Date.now();
+        return json(response, 200, { connected, email: record?.email, status: record?.status ?? 'disconnected', error: record?.last_error, lastSync: record?.last_sync_at, hasMore: Boolean(record?.next_page_token), backgroundTracking: true, scanSchedule: config.recoveryEnabled ? 'every15minutes' : 'daily', watchConnected, trackingMode: watchConnected ? 'push' : 'polling' });
       }
       if (url.pathname === '/api/gmail/start' && request.method === 'POST') {
         if (!gmailConfigured) return json(response, 503, { error: 'Gmail connection is temporarily unavailable. Manual expense tracking is available.' });
@@ -161,6 +175,11 @@ export const hostedConfig = () => ({
   clientSecret: process.env.GOOGLE_CLIENT_SECRET,
   redirectUri: process.env.GOOGLE_REDIRECT_URI,
   cronSecret: process.env.CRON_SECRET,
+  pubsubTopic: process.env.GMAIL_PUBSUB_TOPIC,
+  pubsubSubscription: process.env.GMAIL_PUBSUB_SUBSCRIPTION,
+  pubsubAudience: process.env.GMAIL_PUBSUB_AUDIENCE,
+  pubsubServiceAccount: process.env.GMAIL_PUBSUB_SERVICE_ACCOUNT,
+  recoveryEnabled: process.env.EMAIL_RECOVERY_ENABLED === 'true',
   allowedOrigins: (process.env.ALLOWED_ORIGINS ?? '').split(',').map(value => value.trim()).filter(Boolean),
 });
 
