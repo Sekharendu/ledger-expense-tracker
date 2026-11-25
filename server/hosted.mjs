@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { createClient } from '@supabase/supabase-js';
 import { createTokenCipher } from './cipher.mjs';
 import { HostedStore } from './store.mjs';
-import { createGoogleClient, GMAIL_SCOPE, ProviderError, syncMailbox } from './gmail.mjs';
+import { createGoogleClient, GMAIL_SCOPE, ProviderError, SCAN_BUDGET_MS, syncMailbox } from './gmail.mjs';
 import { isExpense } from '../src/expenses.ts';
 import { deleteLedgerAccount } from './account.mjs';
 
@@ -21,6 +21,7 @@ export function createHostedHandler(config, dependencies = {}) {
   const json = (response, status, data) => { response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' }); response.end(JSON.stringify(data)); };
 
   async function scan(userId) {
+    const signal = AbortSignal.timeout(SCAN_BUDGET_MS);
     const connection = await store.claimScan(userId);
     if (!connection) throw new ProviderError('Gmail is disconnected or another scan is running.', 409);
     let run;
@@ -28,11 +29,11 @@ export function createHostedHandler(config, dependencies = {}) {
       run = await store.startRun(userId);
       let tokens = cipher.open(connection.encrypted_tokens);
       if (tokens.expiresAt < Date.now() + 60_000) {
-        const refreshed = await google.refresh(tokens.refreshToken);
+        const refreshed = await google.refresh(tokens.refreshToken, { signal });
         tokens = { ...refreshed, refreshToken: refreshed.refreshToken ?? tokens.refreshToken };
         if (!await store.updateLeaseTokens(userId, connection.lease, cipher.seal(tokens))) throw new ProviderError('Gmail was disconnected during the scan.', 409);
       }
-      const result = await syncMailbox({ api: google.api, token: tokens.accessToken, email: connection.email, pageToken: connection.next_page_token, pdfExtractor: dependencies.pdfExtractor });
+      const result = await syncMailbox({ api: google.api, token: tokens.accessToken, email: connection.email, pageToken: connection.next_page_token, pdfExtractor: dependencies.pdfExtractor, signal });
       if (!result.expenses.every(isExpense)) throw new Error('Invalid parsed records');
       const committed = await store.commitScan(userId, connection.lease, run, result.expenses, result);
       if (committed.cancelled) throw new ProviderError('The scan was cancelled because Gmail was disconnected.', 409);
@@ -72,10 +73,13 @@ export function createHostedHandler(config, dependencies = {}) {
         const expectedBytes = Buffer.from(expected);
         const suppliedBytes = Buffer.from(supplied);
         if (!config.cronSecret || suppliedBytes.length !== expectedBytes.length || !timingSafeEqual(suppliedBytes, expectedBytes)) return json(response, 401, { error: 'Unauthorized' });
-        await store.purgeExpiredAttempts();
-        for (const item of await store.revokePending(10)) await disconnect(item.user_id).catch(() => {});
-        const results = [];
         const started = Date.now();
+        await store.purgeExpiredAttempts();
+        for (const item of await store.revokePending(10)) {
+          if (Date.now() - started > 20_000) break;
+          await disconnect(item.user_id).catch(() => {});
+        }
+        const results = [];
         for (const item of await store.dueConnections(20)) {
           if (Date.now() - started > 120_000) break;
           try { const result = await scan(item.user_id); results.push({ ok: true, added: result.added }); }

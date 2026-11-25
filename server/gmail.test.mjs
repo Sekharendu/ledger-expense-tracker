@@ -91,6 +91,73 @@ test('authorization uses state, offline read-only access and PKCE', () => {
   assert.equal(url.searchParams.get('access_type'), 'offline');
 });
 
+test('deadline commits completed messages and resumes remaining IDs without relisting or duplicates', async () => {
+  const controller = new AbortController();
+  const receipt = id => fixture([{ mimeType: 'text/plain', body: { data: encoded('Receipt\nTotal: INR 599') } }], id);
+  const first = await syncMailbox({ email: 'me@example.com', token: 'token', signal: controller.signal, api: async route => {
+    if (route.startsWith('/messages?')) return { messages: [{ id: 'first' }, { id: 'second' }], nextPageToken: 'google-page-2' };
+    if (route.includes('/second?')) { controller.abort(); throw controller.signal.reason; }
+    return receipt('first');
+  } });
+  assert.equal(first.scanned, 1);
+  assert.equal(first.expenses.length, 1);
+  assert.equal(first.skipped.length, 0);
+  const cursor = JSON.parse(Buffer.from(first.nextPageToken.split(':')[1], 'base64url').toString());
+  assert.deepEqual(cursor, { messages: [{ id: 'second' }], nextPageToken: 'google-page-2' });
+  const second = await syncMailbox({ email: 'me@example.com', token: 'token', pageToken: first.nextPageToken, api: async route => {
+    assert.match(route, /^\/messages\/second\?/);
+    return receipt('second');
+  } });
+  assert.equal(second.scanned, 1);
+  assert.equal(second.nextPageToken, 'google-page-2');
+  assert.equal(new Set([...first.expenses, ...second.expenses].map(expense => expense.id)).size, 2);
+});
+
+test('a stalled first message produces a bounded retryable error instead of empty success', async () => {
+  let requestSignal;
+  await assert.rejects(syncMailbox({ email: 'me@example.com', budgetMs: 20, api: async (route, token, limit, { signal }) => {
+    if (route.startsWith('/messages?')) return { messages: [{ id: 'slow' }] };
+    requestSignal = signal;
+    return new Promise(() => {});
+  } }), error => error instanceof ProviderError && error.status === 504 && /manually/.test(error.message));
+  assert.equal(requestSignal.aborted, true);
+});
+
+test('PDF deadline never imports partial documents or silently skips the interrupted message', async () => {
+  const controller = new AbortController();
+  const message = fixture([{ mimeType: 'text/plain', body: { data: encoded('Receipt\nTotal: INR 999') } }, { mimeType: 'application/pdf', filename: 'slow.pdf', body: { data: encoded('pdf') } }]);
+  await assert.rejects(syncMailbox({ email: 'me@example.com', signal: controller.signal, api: async route => route.startsWith('/messages?') ? { messages: [{ id: 'msg' }] } : message, pdfExtractor: async (bytes, { signal }) => {
+    assert.equal(signal.aborted, false);
+    controller.abort();
+    throw controller.signal.reason;
+  } }), error => error.status === 504);
+  const retried = await syncMailbox({ email: 'me@example.com', api: async route => route.startsWith('/messages?') ? { messages: [{ id: 'msg' }] } : message, pdfExtractor: async () => 'Receipt\nTotal: INR 999' });
+  assert.equal(retried.scanned, 1);
+  assert.equal(retried.expenses.length, 1);
+  assert.equal(retried.hasMore, false);
+});
+
+test('scan cancellation interrupts Gmail retry backoff and terminates real PDF workers', async () => {
+  const controller = new AbortController();
+  let requests = 0;
+  const client = createGoogleClient({ fetcher: async () => {
+    requests++;
+    return new Response('{}', { status: 429 });
+  }, sleep: async () => { controller.abort(); } });
+  await assert.rejects(client.api('/messages', 'token', undefined, { signal: controller.signal }));
+  assert.equal(requests, 1);
+  const pdfController = new AbortController();
+  const reason = new Error('scan deadline');
+  const extraction = extractPdfText(textPdf('Invoice Total: INR 1499.00'), { signal: pdfController.signal });
+  pdfController.abort(reason);
+  await assert.rejects(extraction, error => error === reason);
+});
+
+test('a provider request timeout stays retryable instead of marking an email skipped', async () => {
+  const client = createGoogleClient({ fetcher: async () => { throw new DOMException('request timed out', 'TimeoutError'); } });
+  await assert.rejects(syncMailbox({ email: 'me@example.com', api: async (...args) => args[0].startsWith('/messages?') ? { messages: [{ id: 'slow' }] } : client.api(...args) }), error => error instanceof ProviderError && error.status === 502);
+});
+
 function textPdf(text) {
   const stream = `BT /F1 12 Tf 50 750 Td (${text}) Tj ET`;
   const objects = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R] /Count 1 >>', '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>', '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>', `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`];

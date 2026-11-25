@@ -11,7 +11,7 @@ Updated: 25 November 2026. An item is checked only after its stated evidence exi
 - [x] Supabase project `oxwrqvpfwgkffppczixx` is healthy; public and backend credentials validated without displaying secrets.
 - [x] Ledger's five PostgreSQL tables are created with RLS enabled.
 - [x] Google identity sign-in is enabled in Supabase. Local web and native OAuth initiation reach Google with identity scopes only.
-- [x] Integrated validation: 37 tests passed; TypeScript, lint, web export and Android Hermes export passed. This is not an APK/device test.
+- [x] Integrated validation: 42 tests passed; TypeScript, lint, web export and Android Hermes export passed. This is not an APK/device test.
 
 ## 1. Finish production sign-in
 
@@ -46,7 +46,8 @@ Updated: 25 November 2026. An item is checked only after its stated evidence exi
 - [ ] Verify live `gmailConfigured: true`.
 - [ ] Connect a consenting test mailbox and perform a real invoice/receipt import.
 - [x] Deployed enabled cron `/api/cron` uses `15 0 * * *` on Vercel Hobby: daily, nominally 05:45 IST with timing variation within an hour. Function duration is 300 seconds. Source selects up to 20 accounts and 25 messages per mailbox per scan.
-- [ ] Verify real attachment-heavy mailbox processing fits the duration limit; the current guard runs between mailboxes and does not bound one slow scan.
+- [x] Bound Gmail processing to a shared 90-second mailbox deadline, including token refresh, requests, retries and PDF workers. Completed messages resume through an ID-only cursor; zero-progress timeout is explicit and retryable. Five added regressions pass.
+- [ ] Verify timing and resume behavior against real attachment-heavy Gmail messages. An exceptionally slow single message can remain pending with a visible timeout and require manual entry.
 - [x] Prepare `npm run configure:gmail` for private credential upload; current check reports missing Google client ID and secret. Credentials and real consent remain pending.
 
 ## 5. Test the complete experience
