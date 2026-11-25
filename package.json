@@ -49,6 +49,7 @@
     "email": "node --env-file-if-exists=.env.server server/index.mjs",
     "email:dev": "node --watch --env-file-if-exists=.env.server server/index.mjs",
     "configure:production": "node scripts/upload-production-secrets.mjs",
+    "configure:gmail": "node scripts/upload-production-secrets.mjs --gmail",
     "verify:hosted": "node scripts/verify-hosted-data.mjs --run"
   },
   "private": true,

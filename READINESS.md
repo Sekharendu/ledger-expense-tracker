@@ -1,6 +1,6 @@
 # Ledger readiness checklist
 
-Updated: 24 November 2026. An item is checked only after its stated evidence exists. A deployed page or passing simulated test does not establish working Google sign-in, Gmail ingestion, an installable Android build, or public-launch readiness.
+Updated: 25 November 2026. An item is checked only after its stated evidence exists. A deployed page or passing simulated test does not establish working Google sign-in, Gmail ingestion, an installable Android build, or public-launch readiness.
 
 ## Verified foundation
 
@@ -14,6 +14,8 @@ Updated: 24 November 2026. An item is checked only after its stated evidence exi
 - [x] Integrated validation: 37 tests passed; TypeScript, lint, web export and Android Hermes export passed. This is not an APK/device test.
 
 ## 1. Finish production sign-in
+
+- [x] Local Google sign-in completed and account visible in PostgreSQL (owner confirmation, 25 November). Production login and returning-account checks below remain separate.
 
 - [ ] Set the Supabase production Site URL to `https://ledger-expense-tracker-sekharendus-projects.vercel.app`.
 - [ ] Allow `https://ledger-expense-tracker-sekharendus-projects.vercel.app/auth/callback` in Supabase redirect URLs.
@@ -43,7 +45,9 @@ Updated: 24 November 2026. An item is checked only after its stated evidence exi
 - [ ] Install the Gmail client ID, client secret, and callback URL in the private production environment.
 - [ ] Verify live `gmailConfigured: true`.
 - [ ] Connect a consenting test mailbox and perform a real invoice/receipt import.
-- [ ] Verify the scheduled scan configuration and documented cadence against the actual hosting plan and processing limits.
+- [x] Deployed enabled cron `/api/cron` uses `15 0 * * *` on Vercel Hobby: daily, nominally 05:45 IST with timing variation within an hour. Function duration is 300 seconds. Source selects up to 20 accounts and 25 messages per mailbox per scan.
+- [ ] Verify real attachment-heavy mailbox processing fits the duration limit; the current guard runs between mailboxes and does not bound one slow scan.
+- [x] Prepare `npm run configure:gmail` for private credential upload; current check reports missing Google client ID and secret. Credentials and real consent remain pending.
 
 ## 5. Test the complete experience
 
@@ -81,6 +85,13 @@ Updated: 24 November 2026. An item is checked only after its stated evidence exi
 - **Gmail readiness agent:** ingestion reliability, scan/disconnect behavior, tests and exact external OAuth prerequisites.
 - **Android/release agent:** build preparation, privacy/account-deletion implementation and Android validation.
 - **Primary agent:** maintain this checklist, coordinate shared-file changes, verify hosted database behavior and integrate/publish the reviewed result.
+
+## Next work, in order
+
+1. Enable Gmail API and create the Ledger Gmail Web OAuth client in Google Cloud; put its client ID and secret in ignored `.env.server`. Upload through the prepared helper, redeploy, then test one real import, duplicate rescan and disconnect.
+2. Test Google login through the production Vercel URL; local login is now confirmed.
+3. Create an Expo account (owner says none exists), log in privately, link Ledger, configure public build variables and produce a preview APK within the available allowance. Install and test on Android.
+4. App display name is Ledger (owner choice). Collect the public support email and operator details, complete the privacy notice, then finish Google branding and the required review for the intended audience. A custom authentication hostname requires an owner-selected domain and a paid Supabase add-on.
 
 ## Current user-dependent items
 

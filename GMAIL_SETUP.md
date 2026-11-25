@@ -14,6 +14,18 @@ The backend verifies the Google ID token, nonce and mailbox identity against the
 
 Gmail read-only is a restricted scope. Public distribution can require Google's verification and security assessment; see [scope requirements](https://developers.google.com/workspace/gmail/api/auth/scopes). With an External audience and Testing publishing status, refresh tokens for Gmail scopes expire after seven days; reconnect during development as needed. See [Google's token-expiration rules](https://developers.google.com/identity/protocols/oauth2/).
 
+## Secure production configuration
+
+For the already-linked Ledger Vercel project, place `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in ignored `.env.server`, then run `npm run configure:gmail -- --check`. The helper defaults the callback to the production URL above, rejects a different callback and reports missing variable names without values. Once ready, `npm run configure:gmail` uploads only the Gmail variables through CLI standard input; a new production deployment is still required. It requires the owner's existing Vercel CLI login. It does not enable the Gmail API, grant consent, or change Google Cloud settings.
+
+## Google sign-in branding
+
+In the same Google Cloud project, open **Google Auth Platform → Branding**, set the app name to **Ledger**, and supply the owner's public support email, homepage and privacy-policy URL. Complete Google's brand verification to display the app name/logo on its consent screen. Changing the Supabase project's display name does not rename its API hostname.
+
+To replace the actual `oxwrqvpfwgkffppczixx.supabase.co` hostname, use a Supabase custom domain such as `auth.example.com` on a domain you own. This is a paid add-on on a paid plan. Before activating it, register `https://auth.example.com/auth/v1/callback` in the Google **sign-in** OAuth client's authorized redirects while retaining the existing callback. This Supabase identity callback is separate from Ledger's `/api/oauth/google/callback` for optional Gmail access.
+
+Sources: [Google branding and verification](https://support.google.com/cloud/answer/15549049), [Supabase Google consent branding](https://supabase.com/docs/guides/auth/social-sign-in/auth-google#setup-consent-screen-branding), [Supabase custom domains](https://supabase.com/docs/guides/platform/custom-domains).
+
 ## User experience
 
 Sign in with Google, then optionally select **Settings → Connect Gmail**. Denying Gmail permission leaves manual tracking available. Approval triggers the first invoice scan. Additional scans run through Vercel cron while the backend is deployed, including while the user is signed out.
