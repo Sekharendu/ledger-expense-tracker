@@ -20,7 +20,7 @@ export function GmailConnection({ onImport, disabled, Button, styles: s }: Props
     {gmail.connection.connected && <>
       <Button label={gmail.busy ? 'Scanning invoices…' : 'Scan recent invoices'} onPress={() => { void gmail.sync(); }} disabled={disabled || gmail.busy} />
       {gmail.hasMore && <Button label="Scan next 25 billing emails" onPress={() => { void gmail.sync(); }} secondary disabled={disabled || gmail.busy} />}
-      <Text style={s.caption}>Each scan checks up to 25 matching emails. Imports go to the review inbox before they affect spending. Text PDFs are supported; scanned images and currency conversion are not.</Text>
+      <Text style={s.caption}>Each scan checks up to 25 matching emails. Clear full-payment evidence and a document date let Ledger mark an expense paid automatically. Other imports need review. Text PDFs are supported; scanned images and currency conversion are not.</Text>
       {!!gmail.connection.lastSync && <Text style={s.muted}>Last scan: {new Date(gmail.connection.lastSync).toLocaleString('en-IN')}</Text>}
     </>}
     {!!gmail.error && <Text accessibilityRole="alert" style={s.error}>{gmail.error}</Text>}

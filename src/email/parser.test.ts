@@ -13,7 +13,7 @@ test('extracts INR total over line items, a reference, date and provenance', () 
   const expense = result.expenses[0];
   assert.equal(expense.amount, 118050);
   assert.equal(expense.date, '2026-11-21');
-  assert.equal(expense.status, 'review');
+  assert.equal(expense.status, 'paid');
   assert.equal(expense.email.suggestedStatus, 'paid');
   assert.equal(expense.email.invoiceNumber, 'INV-123');
   assert.equal(expense.email.messageId, 'message-1');
@@ -31,6 +31,10 @@ test('refunds are separate records and cannot be treated as unpaid expenses', ()
   assert.equal(result.expenses[0].kind, 'refund');
   assert.equal(result.expenses[0].date, '2026-11-06');
   assert.equal(result.expenses[0].email.suggestedStatus, 'paid');
+  assert.equal(result.expenses[0].status, 'review');
+  const partial = parseBillingMessage(message('Grand Total INR 100\nRefund amount INR 10\nRefund completed\nDate: 2026-11-10', { subject: 'Partial refund' })).expenses[0];
+  assert.equal(partial.amount, 1000);
+  assert.equal(partial.status, 'review');
 });
 test('unsupported currencies, ambiguous totals and bad monetary grouping are skipped', () => {
   for (const text of ['Total: USD 25', 'Total: INR 100\nTotal: INR 200', 'Items: ₹100 and ₹200', 'Total: Rs 1,2,3.00', 'Total: INR 1.234', 'Total: 100']) {
@@ -85,7 +89,10 @@ test('Indian GST PDF totals use rupee context without requiring an inline curren
   assert.equal(expense.email.invoiceNumber, 'TEST-123');
   assert.equal(expense.email.attachment, 'invoice.pdf');
   assert.equal(expense.email.confidence, 'medium');
-  assert.equal(expense.status, 'review');
+  assert.equal(expense.status, 'paid');
+  assert.equal(expense.email.payment?.method, 'cash');
+  assert.equal(expense.email.payment?.amountPaid, 1000);
+  assert.match(expense.email.payment?.evidence ?? '', /Petty Cash Payment/);
   assert.match(expense.note, /verify the currency/);
   assert.equal(mergeEmailExpenses([expense], result.expenses).added, 0);
 });
@@ -102,4 +109,44 @@ test('bare totals and non-Indian rupees are not inferred as INR', () => {
   for (const text of ['Total Invoice Amount 10.00', 'Ten Rupees Only\nTotal Invoice Amount 10.00', 'CGST 0.00\nSGST 0.00\nTotal Invoice Amount 10.00', 'Ten Rupees Only\nCGST 0.00\nSGST 0.00\nTotal Invoice Amount 1,2,3.00', 'PKR\nTen Rupees Only\nCGST 0.00\nSGST 0.00\nTotal Invoice Amount 10.00']) {
     assert.equal(parseBillingMessage(message(text)).expenses.length, 0, text);
   }
+});
+
+test('payment facts preserve final invoice totals and partial payments stay in review', () => {
+  const expense = parseBillingMessage(message('Invoice No: TEST-PARTIAL\nInvoice date: 2026-11-10\nGrand Total INR 100.00\nAmount Paid INR 50.00\nBalance Due INR 50.00\nPayment successful')).expenses[0];
+  assert.equal(expense.amount, 10000);
+  assert.equal(expense.status, 'review');
+  assert.equal(expense.email.payment?.amountPaid, 5000);
+  assert.equal(expense.email.payment?.balanceDue, 5000);
+  assert.notEqual(expense.email.suggestedStatus, 'paid');
+});
+
+test('automatic paid status needs payment evidence and a document date', () => {
+  const expense = parseBillingMessage(message('Total INR 100.00\nPayment successful')).expenses[0];
+  assert.equal(expense.status, 'review');
+  assert.equal(expense.email.suggestedStatus, 'paid');
+  const invoice = parseBillingMessage(message('Invoice date: 2026-11-10\nTotal INR 100.00')).expenses[0];
+  assert.equal(invoice.status, 'review');
+  const receipt = parseBillingMessage(message('Receipt date: 2026-11-10\nTotal INR 100.00')).expenses[0];
+  assert.equal(receipt.status, 'review');
+  const paid = parseBillingMessage(message('Invoice date: 2026-11-10\nPayment date: 2026-11-12\nTotal INR 100.00\nPayment status: paid')).expenses[0];
+  assert.equal(paid.status, 'paid');
+  assert.equal(paid.date, '2026-11-12');
+  const dueFirst = parseBillingMessage(message('Due date: 2026-12-01\nInvoice date: 2026-11-10\nTotal INR 100.00\nPayment status: paid')).expenses[0];
+  assert.equal(dueFirst.date, '2026-11-10');
+  const dueOnly = parseBillingMessage(message('Due date: 2026-12-01\nTotal INR 100.00\nPayment status: paid')).expenses[0];
+  assert.equal(dueOnly.status, 'review');
+});
+
+test('body payment evidence transfers only to an attachment with the same invoice and amount', () => {
+  const body = 'Invoice No: TEST-LINKED\nPayment date: 2026-11-12\nTotal INR 100.00\nPayment received';
+  const pdf = 'Invoice No: TEST-LINKED\nInvoice date: 2026-11-10\nGrand Total INR 100.00';
+  const result = parseBillingMessage(message('', { documents: [{ text: body }, { text: pdf, filename: 'invoice.pdf' }] }));
+  assert.equal(result.expenses.length, 1);
+  assert.equal(result.expenses[0].status, 'paid');
+  assert.equal(result.expenses[0].date, '2026-11-12');
+  assert.equal(result.expenses[0].email.paymentSource, 'email');
+  const unrelated = parseBillingMessage(message('', { subject: 'Payment successful', documents: [{ text: pdf, filename: 'invoice.pdf' }] }));
+  assert.equal(unrelated.expenses[0].status, 'review');
+  const pending = parseBillingMessage(message('', { documents: [{ text: body }, { text: pdf + '\nPayment pending', filename: 'invoice.pdf' }] }));
+  assert.equal(pending.expenses[0].status, 'review');
 });

@@ -36,7 +36,7 @@ Disconnect immediately disables scans. If Google's revocation endpoint is tempor
 
 Each scan checks up to 25 recent billing messages within a 90-second mailbox processing budget. If time runs out after completed messages, those records are saved and the next scan resumes at the unfinished message; the continuation stores message IDs and provider pagination only. If no message completes, Ledger returns an explicit retryable timeout rather than reporting an empty success. Email text/HTML and text PDFs are supported. HTML conversion does not load tracking images or external links. PDF workers have size, page, memory and time bounds. Message bodies and attachment files are processed in memory, while extracted records, source metadata and scan results are saved in PostgreSQL.
 
-The deterministic parser handles INR, English labels, totals, dates, references, suggested categories and payment state. All imports start in review. Missing dates fall back to delivery date and are flagged. It excludes statements, failed payments, conflicting totals and unsupported currencies. It does not support OCR, scanned or password-protected PDFs, or currency conversion.
+The deterministic parser handles INR, English labels, totals, dates, references, suggested categories and payment state. Explicit full-payment evidence plus a document date can mark an expense paid automatically. It stores the payment method, paid amount, balance and supporting quote when available. Plain invoices/receipts, partial or conflicting payments and uncertain dates stay in review. Unpaid suggestions and refunds stay in review; partial balances are not treated as full paid expenses. Missing dates fall back to delivery date and are flagged. It excludes statements, failed payments, conflicting totals and unsupported currencies. It does not support OCR, scanned or password-protected PDFs, or currency conversion.
 
 Matching message IDs and sender/invoice-reference/amount combinations suppress duplicates without overwriting corrections. Records without matching references can still represent the same purchase; verify their sources before marking both as paid.
 
@@ -44,8 +44,8 @@ Matching message IDs and sender/invoice-reference/amount combinations suppress d
 
 1. Sign in to Ledger with the same Google account that will connect Gmail. If the Google project is in Testing mode, add that account under **Google Auth Platform → Audience → Test users**.
 2. Open **Settings → Connect Gmail**, approve read-only Gmail access, and return to Ledger. Declining must leave manual expenses usable.
-3. Confirm the first scan finishes and records appear in the review inbox. Use an existing INR receipt or text PDF from the last 90 days. No mail is sent by the importer.
-4. Check the extracted merchant, total, date, paid/unpaid/refund suggestion and original Gmail source. Confirm a paid record and check the dashboard changes; unconfirmed records must remain in review.
+3. Confirm the first scan finishes and records appear in the inbox. Use an existing INR receipt or text PDF from the last 90 days. No mail is sent by the importer.
+4. Check the extracted merchant, total, date, payment evidence and original Gmail source. Full-payment evidence with a document date should create a paid record and update monthly spending. Plain invoices, partial/pending/ambiguous payments and missing dates must stay in review. A payment email can prove an attachment only when the invoice reference and amount match. Correct records as needed; repeated scans must preserve corrections.
 5. Scan again and confirm the same receipt is not added twice. If more mail remains, continue scanning and verify records are preserved across batches.
 6. Sign out and back in; expenses and the connected-mailbox status should persist. Scheduled tracking remains enabled while signed out.
 7. Disconnect Gmail; verify tracking stops and existing expenses remain. Reconnect only when another test is needed.

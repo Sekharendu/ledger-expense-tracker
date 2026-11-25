@@ -1,4 +1,5 @@
 import type { Expense } from '../expenses';
+import type { PaymentClassification } from './payment';
 
 export type EmailEvidence = {
   provider: 'gmail';
@@ -14,6 +15,8 @@ export type EmailEvidence = {
   confidence: 'high' | 'medium';
   originalAmount: number;
   attachment?: string;
+  payment?: PaymentClassification;
+  paymentSource?: 'email' | 'attachment';
 };
 
 export type EmailExpense = Expense & { email: EmailEvidence };
@@ -47,5 +50,18 @@ export function isEmailEvidence(value: unknown): value is EmailEvidence {
     Number.isSafeInteger(evidence.originalAmount) && evidence.originalAmount > 0 &&
     (evidence.invoiceKey === undefined || typeof evidence.invoiceKey === 'string') &&
     (evidence.invoiceNumber === undefined || typeof evidence.invoiceNumber === 'string') &&
-    (evidence.attachment === undefined || typeof evidence.attachment === 'string');
+    (evidence.attachment === undefined || typeof evidence.attachment === 'string') &&
+    (evidence.paymentSource === undefined || ['email', 'attachment'].includes(evidence.paymentSource)) &&
+    (evidence.payment === undefined || isPayment(evidence.payment));
+}
+
+function isPayment(value: unknown): value is PaymentClassification {
+  if (!value || typeof value !== 'object') return false;
+  const payment = value as PaymentClassification;
+  return ['paid', 'unpaid', 'review'].includes(payment.status) && typeof payment.confirmed === 'boolean' &&
+    (!payment.confirmed || payment.status === 'paid') &&
+    (payment.evidence === undefined || typeof payment.evidence === 'string') &&
+    (payment.method === undefined || ['cash', 'card', 'upi', 'bank_transfer'].includes(payment.method)) &&
+    (payment.amountPaid === undefined || (Number.isSafeInteger(payment.amountPaid) && payment.amountPaid >= 0)) &&
+    (payment.balanceDue === undefined || (Number.isSafeInteger(payment.balanceDue) && payment.balanceDue >= 0));
 }

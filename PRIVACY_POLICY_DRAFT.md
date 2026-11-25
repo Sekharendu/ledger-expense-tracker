@@ -31,7 +31,7 @@ The operator must verify the final providers, hosting regions and any additional
 
 ## Your controls
 
-You can use manual expense tracking without connecting Gmail. You can inspect and correct imported records before confirming them as spending.
+You can use manual expense tracking without connecting Gmail. Clear full-payment evidence and a document date allow Ledger to mark an import paid automatically. Uncertain imports remain in review. You can inspect and correct any record and its extracted payment evidence.
 
 Signing out ends that app session and keeps your expense account and any connected Gmail tracking. Disconnecting Gmail stops future scans and requests revocation of Google access. If Google is temporarily unavailable, tracking remains disabled while revocation is retried. Previously imported expenses remain until you delete them.
 

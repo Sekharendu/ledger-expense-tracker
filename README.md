@@ -7,7 +7,7 @@ Android expense tracking with optional Gmail imports. React Native / Expo fronte
 1. Sign in with Google to create or find an account. This requests identity scopes only.
 2. Use the dashboard and enter expenses immediately.
 3. Optionally connect Gmail in Settings. Read-only inbox access is requested separately.
-4. The backend extracts INR expenses from email bodies and text PDFs, deduplicates records, and saves them under that account. Imports enter review before affecting spending totals.
+4. The backend extracts INR expenses and payment evidence from email bodies and text PDFs, deduplicates records, and saves them under that account. Clear full-payment evidence with a document date creates a paid record; uncertain imports enter review.
 5. Signing out ends the app session. Gmail tracking continues until disconnected. Disconnect stops future scans, revokes Google access, and preserves existing expenses.
 
 ## Hosted deployment

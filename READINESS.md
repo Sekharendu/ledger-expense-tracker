@@ -11,7 +11,7 @@ Updated: 25 November 2026. An item is checked only after its stated evidence exi
 - [x] Supabase project `oxwrqvpfwgkffppczixx` is healthy; public and backend credentials validated without displaying secrets.
 - [x] Ledger's five PostgreSQL tables are created with RLS enabled.
 - [x] Google identity sign-in is enabled in Supabase. Local web and native OAuth initiation reach Google with identity scopes only.
-- [x] Integrated validation: 45 tests passed; TypeScript, lint, web export and Android Hermes export passed. This is not an APK/device test.
+- [x] Integrated validation: 55 tests passed; TypeScript, lint, web export and Android Hermes export passed. This is not an APK/device test.
 
 ## 1. Finish production sign-in
 
@@ -59,7 +59,8 @@ Updated: 25 November 2026. An item is checked only after its stated evidence exi
 - [ ] Verify actual Google login and sign-out, with no previous user's data shown after an account change.
 - [x] Verify real Supabase password-test sessions, same-account reads across two clients, backend session validation, and signed-out JWT rejection. This does not replace the actual Google/browser/mobile test above.
 - [x] Verify real Gmail PDF import into review and rescan deduplication. Added support for final totals with document-level INR or Indian GST/rupee evidence; no inline symbol is required.
-- [ ] Verify owner confirmation updates dashboard spending, plus real refunds and unpaid bills.
+- [x] Verify an owner-selected real invoice with matching full cash-payment evidence is paid automatically; guarded correction changed only its unchanged review record, preserved the single record and verified monthly paid-spending calculation in hosted data.
+- [ ] Verify rendered dashboard updates and real refunds/unpaid bills on the installed app.
 - [ ] Verify signing out leaves enabled Gmail tracking intact.
 - [ ] Verify disconnect stops scans, revokes access, and keeps existing expenses.
 - [ ] Check production logs after a complete Google/Gmail run. The current runtime-error summary reported none; individual log lookup returned a provider error, so full log review is not claimed.
@@ -100,7 +101,7 @@ Updated: 25 November 2026. An item is checked only after its stated evidence exi
 ## Current user-dependent items
 
 - A Google sign-in and Gmail grant require the account owner's browser interaction; no agent test substitutes for actual consent.
-- Gmail consent, real PDF invoice import and repeat-scan deduplication are verified. Owner review/confirmation and remaining device/disconnect checks are pending.
+- Gmail consent, real PDF invoice import and repeat-scan deduplication are verified. Automatic full-payment classification and hosted monthly spending calculation are verified; ambiguous records still require review. Remaining device/disconnect checks are pending.
 - Production private secret transfer, GitHub deployment, live database/API validation and temporary-account deletion checks are complete. Gmail configuration is now enabled; real PDF import and duplicate prevention are now verified.
 - Expo CLI login succeeded; project `@andromeda-666/ledger-finance-tracker` (`59a4ab3a-372c-4f96-9226-2a164ba457e9`) is linked and verified. No APK/AAB or signing credentials have been generated.
 - Privacy-policy operator identity/contact, the intended public audience, and an authorized mobile build/publishing account must be confirmed before claiming public-launch readiness.
