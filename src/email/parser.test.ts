@@ -74,3 +74,32 @@ test('small unpaid balances and changed invoice amounts are not silently discard
   const second = parseBillingMessage(message('Invoice No: INV-102\nAmount due: INR 20', { id: 'other-message' })).expenses[0];
   assert.equal(mergeEmailExpenses([first], [second]).added, 1);
 });
+
+test('Indian GST PDF totals use rupee context without requiring an inline currency symbol', () => {
+  const text = 'Invoice No. : TEST-123\nInvoice Date : 10-11-2026\nSub Total 1.000 10.00 0.00 10.00\nTotal Invoice Amount in Words:\nTen Rupees Only Total Amount Before Tax 10.00\nTotal CGST 0.00\nTotal SGST/UTGST 0.00\nTotal Amount After Tax 10.00\nTotal Invoice Amount 10.00\nPetty Cash Payment 10.00';
+  const result = parseBillingMessage(message('', { subject: 'Fwd: Invoice', documents: [{ text: 'Please find the attached invoice.' }, { text, filename: 'invoice.pdf' }] }));
+  assert.equal(result.expenses.length, 1);
+  const expense = result.expenses[0];
+  assert.equal(expense.amount, 1000);
+  assert.equal(expense.date, '2026-11-10');
+  assert.equal(expense.email.invoiceNumber, 'TEST-123');
+  assert.equal(expense.email.attachment, 'invoice.pdf');
+  assert.equal(expense.email.confidence, 'medium');
+  assert.equal(expense.status, 'review');
+  assert.match(expense.note, /verify the currency/);
+  assert.equal(mergeEmailExpenses([expense], result.expenses).added, 0);
+});
+
+test('contextual totals exclude subtotal and tax rows, and reject conflicting final amounts', () => {
+  const context = 'Currency: INR\nSub Total 100.00\nTotal CGST 9.00\nTotal SGST 9.00\n';
+  assert.equal(parseBillingMessage(message(`${context}Total Amount After Tax 118.00\nTotal Invoice Amount 118.00`)).expenses[0].amount, 11800);
+  assert.equal(parseBillingMessage(message(`${context}Total Invoice Amount\n118.00`)).expenses[0].amount, 11800);
+  assert.equal(parseBillingMessage(message(`${context}Grand Total 118.00\nTotal Invoice Amount 119.00`)).expenses.length, 0);
+  assert.equal(parseBillingMessage(message(context)).expenses.length, 0);
+});
+
+test('bare totals and non-Indian rupees are not inferred as INR', () => {
+  for (const text of ['Total Invoice Amount 10.00', 'Ten Rupees Only\nTotal Invoice Amount 10.00', 'CGST 0.00\nSGST 0.00\nTotal Invoice Amount 10.00', 'Ten Rupees Only\nCGST 0.00\nSGST 0.00\nTotal Invoice Amount 1,2,3.00', 'PKR\nTen Rupees Only\nCGST 0.00\nSGST 0.00\nTotal Invoice Amount 10.00']) {
+    assert.equal(parseBillingMessage(message(text)).expenses.length, 0, text);
+  }
+});

@@ -11,7 +11,7 @@ Updated: 25 November 2026. An item is checked only after its stated evidence exi
 - [x] Supabase project `oxwrqvpfwgkffppczixx` is healthy; public and backend credentials validated without displaying secrets.
 - [x] Ledger's five PostgreSQL tables are created with RLS enabled.
 - [x] Google identity sign-in is enabled in Supabase. Local web and native OAuth initiation reach Google with identity scopes only.
-- [x] Integrated validation: 42 tests passed; TypeScript, lint, web export and Android Hermes export passed. This is not an APK/device test.
+- [x] Integrated validation: 45 tests passed; TypeScript, lint, web export and Android Hermes export passed. This is not an APK/device test.
 
 ## 1. Finish production sign-in
 
@@ -40,15 +40,15 @@ Updated: 25 November 2026. An item is checked only after its stated evidence exi
 
 ## 4. Enable Gmail tracking
 
-- [ ] Enable the Gmail API in Ledger's Google Cloud project.
-- [ ] Configure the separate Gmail OAuth client/consent grant and register `https://ledger-expense-tracker-sekharendus-projects.vercel.app/api/oauth/google/callback`.
-- [ ] Install the Gmail client ID, client secret, and callback URL in the private production environment.
-- [ ] Verify live `gmailConfigured: true`.
-- [ ] Connect a consenting test mailbox and perform a real invoice/receipt import.
+- [x] Gmail API enabled; real authenticated message/attachment reads succeeded (25 November).
+- [x] Register the Gmail production callback on the Web OAuth client (owner confirmation, 25 November). Read-only consent is tested separately below.
+- [x] Install Gmail client ID, secret and canonical callback in Vercel production through CLI stdin; local ignored server configuration is also loaded. No secret values displayed.
+- [x] Fresh GitHub-source deployment `dpl_AjdjRQ6M6pxBfPhNiQPuyZkGvaNU` is READY on commit `670f064`; live health returns databaseConfigured=true and gmailConfigured=true. Anonymous connection requests return401; invalid OAuth callbacks return400.
+- [x] Owner approved Gmail access. A real forwarded GST invoice PDF was read and imported through the hosted scan pipeline into PostgreSQL review records (25 November); repeat scan added zero and reported one duplicate.
 - [x] Deployed enabled cron `/api/cron` uses `15 0 * * *` on Vercel Hobby: daily, nominally 05:45 IST with timing variation within an hour. Function duration is 300 seconds. Source selects up to 20 accounts and 25 messages per mailbox per scan.
 - [x] Bound Gmail processing to a shared 90-second mailbox deadline, including token refresh, requests, retries and PDF workers. Completed messages resume through an ID-only cursor; zero-progress timeout is explicit and retryable. Five added regressions pass.
 - [ ] Verify timing and resume behavior against real attachment-heavy Gmail messages. An exceptionally slow single message can remain pending with a visible timeout and require manual entry.
-- [x] Prepare `npm run configure:gmail` for private credential upload; current check reports missing Google client ID and secret. Credentials and real consent remain pending.
+- [x] Prepare `npm run configure:gmail` for private credential upload; configuration check now passes and credentials are installed. Real consent/import remains pending.
 
 ## 5. Test the complete experience
 
@@ -58,7 +58,8 @@ Updated: 25 November 2026. An item is checked only after its stated evidence exi
 - [x] Verify one real account cannot read or modify another account's expenses; also verified forged-owner insert rejection and private credential-table denials.
 - [ ] Verify actual Google login and sign-out, with no previous user's data shown after an account change.
 - [x] Verify real Supabase password-test sessions, same-account reads across two clients, backend session validation, and signed-out JWT rejection. This does not replace the actual Google/browser/mobile test above.
-- [ ] Verify real Gmail import, review/confirmation, rescan deduplication, refunds and unpaid bills.
+- [x] Verify real Gmail PDF import into review and rescan deduplication. Added support for final totals with document-level INR or Indian GST/rupee evidence; no inline symbol is required.
+- [ ] Verify owner confirmation updates dashboard spending, plus real refunds and unpaid bills.
 - [ ] Verify signing out leaves enabled Gmail tracking intact.
 - [ ] Verify disconnect stops scans, revokes access, and keeps existing expenses.
 - [ ] Check production logs after a complete Google/Gmail run. The current runtime-error summary reported none; individual log lookup returned a provider error, so full log review is not claimed.
@@ -91,7 +92,7 @@ Updated: 25 November 2026. An item is checked only after its stated evidence exi
 
 ## Next work, in order
 
-1. Enable Gmail API and create the Ledger Gmail Web OAuth client in Google Cloud; put its client ID and secret in ignored `.env.server`. Upload through the prepared helper, redeploy, then test one real import, duplicate rescan and disconnect.
+1. Gmail credentials/callback are configured locally and in production. Verify Gmail API is enabled, then approve Settings → Connect Gmail and test one real import, duplicate rescan and disconnect.
 2. Test Google login through the production Vercel URL; local login is now confirmed.
 3. Expo login and project linking are complete. Configure public build variables and produce a preview APK within the available allowance, then install and test on Android.
 4. App display name is Ledger (owner choice). Collect the public support email and operator details, complete the privacy notice, then finish Google branding and the required review for the intended audience. A custom authentication hostname requires an owner-selected domain and a paid Supabase add-on.
@@ -99,7 +100,7 @@ Updated: 25 November 2026. An item is checked only after its stated evidence exi
 ## Current user-dependent items
 
 - A Google sign-in and Gmail grant require the account owner's browser interaction; no agent test substitutes for actual consent.
-- Google Gmail OAuth client credentials are not yet present in the private app configuration.
-- Production private secret transfer, GitHub deployment, live database/API validation and temporary-account deletion checks are complete. Gmail is still unconfigured.
+- Gmail consent, real PDF invoice import and repeat-scan deduplication are verified. Owner review/confirmation and remaining device/disconnect checks are pending.
+- Production private secret transfer, GitHub deployment, live database/API validation and temporary-account deletion checks are complete. Gmail configuration is now enabled; real PDF import and duplicate prevention are now verified.
 - Expo CLI login succeeded; project `@andromeda-666/ledger-finance-tracker` (`59a4ab3a-372c-4f96-9226-2a164ba457e9`) is linked and verified. No APK/AAB or signing credentials have been generated.
 - Privacy-policy operator identity/contact, the intended public audience, and an authorized mobile build/publishing account must be confirmed before claiming public-launch readiness.

@@ -14,16 +14,27 @@ function currencyAmount(raw: string): number | null {
   return parseAmount(clean.replaceAll(',', ''));
 }
 
-function extractAmount(text: string): { amount?: number; reason?: string } {
-  if (/(?:\b(?:USD|EUR|GBP|AUD|CAD|SGD|AED|JPY)\b|[$€£])/i.test(text)) return { reason: 'Non-INR or mixed-currency document; currency conversion is not supported.' };
+function extractAmount(text: string): { amount?: number; reason?: string; currencyFromContext?: boolean } {
+  if (/(?:\b(?:USD|EUR|GBP|AUD|CAD|SGD|AED|JPY|PKR|LKR|NPR|MUR|SCR)\b|[$€£])/i.test(text)) return { reason: 'Non-INR or mixed-currency document; currency conversion is not supported.' };
   const currency = '(?:INR|Rs\\.?|₹)';
   const number = '(\\d[\\d,]*(?:\\.\\d{1,2})?)(?![\\d.])';
-  // Total labels outrank line items, discounts and subtotal. No currency is inferred.
+  // Total labels with an inline currency outrank line items and subtotal.
   const total = new RegExp(`(?:grand\\s+total|total\\s+(?:amount|paid|due|payable)|amount\\s+(?:paid|due|payable|charged|refunded)|refund\\s+amount|(?<!sub)\\btotal)\\s*[:=—-]?\\s*(?:${currency}\\s*${number}|${number}\\s*${currency})`, 'gi');
   const totals = [...text.matchAll(total)].map(match => currencyAmount(match[1] ?? match[2])).filter((value): value is number => value !== null);
   const unique = [...new Set(totals)];
   if (unique.length === 1) return { amount: unique[0] };
   if (unique.length > 1) return { reason: 'Conflicting totals; review the original email manually.' };
+  // Some Indian GST PDFs put "Rupees Only" in words and leave currency off
+  // numeric rows. Require currency evidence and a standalone final-total row;
+  // never infer INR from a bare number, GST alone, or a subtotal/tax row.
+  const indianCurrency = /\bINR\b|₹|\bIndian\s+Rupees\b/i.test(text) ||
+    (/\brupees\b/i.test(text) && /\bCGST\b/i.test(text) && /\b(?:SGST|UTGST)\b/i.test(text));
+  if (indianCurrency) {
+    const finalTotal = new RegExp(`^[ \\t]*(?:total[ \\t]+invoice[ \\t]+amount|total[ \\t]+amount[ \\t]+after[ \\t]+tax|grand[ \\t]+total|net[ \\t]+(?:amount|payable))[ \\t]*[:=—-]?[ \\t]*(?:\\r?\\n[ \\t]*)?(?:${currency}[ \\t]*)?${number}(?:[ \\t]*${currency})?[ \\t]*$`, 'gim');
+    const contextualTotals = [...new Set([...text.matchAll(finalTotal)].map(match => currencyAmount(match[1])).filter((value): value is number => value !== null))];
+    if (contextualTotals.length === 1) return { amount: contextualTotals[0], currencyFromContext: true };
+    if (contextualTotals.length > 1) return { reason: 'Conflicting final invoice totals; review the original email manually.' };
+  }
   const amounts = [...text.matchAll(new RegExp(`${currency}\\s*${number}|${number}\\s*${currency}`, 'gi'))].map(match => currencyAmount(match[1] ?? match[2])).filter((value): value is number => value !== null);
   const values = [...new Set(amounts)];
   return values.length === 1 ? { amount: values[0] } : { reason: values.length ? 'Multiple amounts with no clear total.' : 'No supported INR total found.' };
@@ -83,7 +94,7 @@ export function parseBillingMessage(message: BillingMessage): { expenses: EmailE
       threadId: message.threadId ?? message.id, subject: message.subject.slice(0, 250), sender: message.from.slice(0, 250),
       sourceUrl: `https://mail.google.com/mail/u/0/#all/${encodeURIComponent(message.id)}`,
       invoiceNumber, invoiceKey, suggestedStatus,
-      confidence: suggestedStatus !== 'review' && !extractedDate.inferred ? 'high' : 'medium',
+      confidence: suggestedStatus !== 'review' && !extractedDate.inferred && !result.currencyFromContext ? 'high' : 'medium',
       originalAmount: result.amount,
       attachment: document.filename,
     };
@@ -91,6 +102,7 @@ export function parseBillingMessage(message: BillingMessage): { expenses: EmailE
       'Imported from Gmail. Confirm the amount, category and payment status before counting it as spending.',
       `Detected status: ${suggestedStatus}.`,
       extractedDate.inferred ? 'Date inferred from email delivery; verify transaction or due date.' : 'Date extracted from document; verify before confirming.',
+      result.currencyFromContext ? 'INR identified from the invoice currency or Indian GST context; verify the currency.' : '',
       invoiceNumber ? `Invoice reference: ${invoiceNumber}.` : 'No invoice reference detected; check for a related receipt.',
       document.filename ? `Attachment: ${document.filename}.` : '',
     ].filter(Boolean).join(' ');
