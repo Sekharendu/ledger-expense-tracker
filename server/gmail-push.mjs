@@ -50,7 +50,11 @@ export function createNotificationReceiver(config, { store, scan, verifyToken = 
     if (typeof data !== 'string' || data.length > 8192 || !/^[A-Za-z0-9_+/-]+={0,2}$/.test(data)) throw new ProviderError('Invalid notification payload.', 400);
     let payload;
     try { payload = JSON.parse(Buffer.from(data, 'base64').toString('utf8')); } catch { throw new ProviderError('Invalid notification payload.', 400); }
-    if (typeof payload?.emailAddress !== 'string' || payload.emailAddress.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.emailAddress) || typeof payload.historyId !== 'string' || !/^\d{1,30}$/.test(payload.historyId)) throw new ProviderError('Invalid mailbox notification.', 400);
+    // Gmail deliveries can encode the history ID as a JSON number. Accept only
+    // exact integers; rounded IDs must never be used as a history cursor.
+    const historyId = typeof payload?.historyId === 'string' ? payload.historyId
+      : Number.isSafeInteger(payload?.historyId) && payload.historyId >= 0 ? String(payload.historyId) : '';
+    if (typeof payload?.emailAddress !== 'string' || payload.emailAddress.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.emailAddress) || !/^\d{1,30}$/.test(historyId)) throw new ProviderError('Invalid mailbox notification.', 400);
     const connection = await store.connectionByEmail(payload.emailAddress.toLowerCase());
     // Late notifications after disconnect/deletion need no retry and must not scan.
     if (!connection?.enabled || connection.status !== 'connected') return;

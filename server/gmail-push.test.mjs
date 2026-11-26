@@ -69,6 +69,22 @@ test('busy or temporarily failing scans request redelivery; revoked access is ac
   await receiver(request());
 });
 
+test('Gmail history IDs accept exact JSON numbers and strings but reject invalid or rounded values', async () => {
+  let scans = 0;
+  const receiver = createNotificationReceiver(config, {
+    verifyToken: async () => true,
+    store: { connectionByEmail: async () => ({ user_id: 'a', enabled: true, status: 'connected' }) },
+    scan: async () => scans++,
+  });
+  const withHistory = historyId => request({ ...envelope(), message: { data: Buffer.from(JSON.stringify({ emailAddress: 'user@example.com', historyId })).toString('base64url') } });
+  for (const id of [12345, '12345', '9007199254740993']) await receiver(withHistory(id));
+  assert.equal(scans, 3);
+  for (const id of [9007199254740992, -1, 1.5, null, true, {}, '', '1e5']) {
+    await assert.rejects(receiver(withHistory(id)), error => error.status === 400);
+  }
+  assert.equal(scans, 3);
+});
+
 test('watches register, renew daily and stop without exposing tokens', async () => {
   let time = Date.parse('2026-11-25T00:00:00Z');
   let watches = 0; let stopped = 0;
