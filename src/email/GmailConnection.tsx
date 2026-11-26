@@ -27,7 +27,7 @@ export function GmailConnection({ onImport, disabled, Button, styles: s }: Props
     </>}
     {!!gmail.error && <Text accessibilityRole="alert" style={s.error}>{gmail.error}</Text>}
     {gmail.report && <View accessibilityLiveRegion="polite">
-      <Text style={s.intro}>{gmail.report.scanned} emails scanned · {gmail.report.added} records added · {gmail.report.duplicates} duplicates skipped.</Text>
+      <Text style={s.intro}>{gmail.report.scanned} emails scanned · {gmail.report.added} records added · {gmail.report.duplicates} duplicates skipped{gmail.report.refreshed ? ` · ${gmail.report.refreshed} records updated` : ''}.</Text>
       {gmail.report.skipped.length > 0 && <>
         <Text style={s.muted}>{gmail.report.skipped.length} items need attention or could not be imported:</Text>
         {gmail.report.skipped.slice(0, 8).map((item, index) => <Text key={`${item.messageId}-${index}`} style={s.caption}>{item.subject}: {item.reason}</Text>)}

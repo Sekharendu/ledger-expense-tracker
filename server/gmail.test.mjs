@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import { Buffer } from 'node:buffer';
 import assert from 'node:assert/strict';
-import { createGoogleClient, extractMessage, extractPdfText, GMAIL_SCOPE, ProviderError, readJson, syncMailbox } from './gmail.mjs';
+import { createGoogleClient, extractMessage, extractPdfText, GMAIL_SCOPE, ProviderError, readJson, syncMailbox, UnreadableContentError } from './gmail.mjs';
+import { GMAIL_PROCESSOR_VERSION } from './gmail-version.mjs';
 
 const encoded = text => Buffer.from(text).toString('base64url');
 const fixture = (parts, id = 'msg') => ({ id, threadId: 'thread', internalDate: String(Date.parse('2026-11-23T12:00:00Z')), payload: { mimeType: 'multipart/mixed', headers: [{ name: 'Subject', value: 'Your invoice' }, { name: 'From', value: 'Store <billing@store.test>' }], parts } });
@@ -19,9 +20,28 @@ test('PDF attachments feed the same parser, and unreadable attachments are repor
   const result = await extractMessage(gmail, 'account', async () => ({ data: encoded('pdf bytes') }), 'token', async () => 'Invoice No: PDF-123\nTotal: INR 499\nDate: 2026-11-21');
   assert.equal(result.expenses[0].amount, 49900);
   assert.equal(result.expenses[0].email.attachment, 'invoice.pdf');
-  const failed = await extractMessage(gmail, 'account', async () => ({ data: encoded('bad') }), 'token', async () => { throw new Error('encrypted'); });
+  const failed = await extractMessage(gmail, 'account', async () => ({ data: encoded('bad') }), 'token', async () => { throw new UnreadableContentError('encrypted'); });
   assert.equal(failed.expenses.length, 0);
   assert.equal(failed.warnings.length, 1);
+  assert.equal(failed.retryable, false);
+});
+test('a PDF that fails for a temporary reason leaves the email unprocessed so the next scan retries it', async () => {
+  const message = fixture([{ mimeType: 'text/plain', body: { data: encoded('Receipt\nTotal: INR 599') } }, { filename: 'invoice.pdf', mimeType: 'application/pdf', body: { attachmentId: 'attachment', size: 50 } }]);
+  const api = async route => route.startsWith('/messages?') ? { messages: [{ id: 'msg' }] } : route.includes('/attachments/') ? { data: encoded('pdf') } : message;
+  const failed = await syncMailbox({ email: 'me@example.com', api, pdfExtractor: async () => { throw new Error('PDF processing timed out.'); } });
+  assert.deepEqual(failed.processedMessageIds, []);
+  assert.equal(failed.expenses.length, 0);
+  assert.match(failed.skipped[0].reason, /retried on the next scan/);
+  assert.equal(failed.hasMore, false);
+  const unreadable = await syncMailbox({ email: 'me@example.com', api, pdfExtractor: async () => { throw new UnreadableContentError('encrypted'); } });
+  assert.deepEqual(unreadable.processedMessageIds, ['msg']);
+  const crashed = await syncMailbox({ email: 'me@example.com', api, pdfExtractor: async () => undefined }); // an unexpected bug, like the watch-mode worker message
+  assert.deepEqual(crashed.processedMessageIds, []);
+  const retried = await syncMailbox({ email: 'me@example.com', api, pdfExtractor: async () => 'Invoice No: PDF-1\nTotal: INR 499\nDate: 2026-11-21' });
+  assert.deepEqual(retried.processedMessageIds, ['msg']);
+  const pdf = retried.expenses.find(expense => expense.email.attachment);
+  assert.equal(pdf.email.processorVersion, GMAIL_PROCESSOR_VERSION);
+  assert.deepEqual(pdf.email.imported, { merchant: pdf.merchant, amount: pdf.amount, date: pdf.date, category: pdf.category, status: pdf.status, kind: pdf.kind, note: pdf.note });
 });
 test('Gmail list pagination returns a continuation without losing messages', async () => {
   const routes = [];

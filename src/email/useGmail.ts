@@ -16,7 +16,7 @@ export function useGmail(onImport: () => Promise<void>) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [statusError, setStatusError] = useState('');
-  const [report, setReport] = useState<(SyncResult & { added: number; duplicates: number }) | null>(null);
+  const [report, setReport] = useState<(SyncResult & { added: number; duplicates: number; refreshed?: number }) | null>(null);
   const [owner, setOwner] = useState(userId);
   if (owner !== userId) {
     setOwner(userId); setConnection({ connected: false }); setAttempt(null); setBusy(false); setError(''); setStatusError(''); setReport(null);

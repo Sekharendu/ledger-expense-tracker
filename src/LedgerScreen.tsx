@@ -49,6 +49,7 @@ function LedgerDashboard() {
   const [status, setStatus] = useState<Expense['status']>('paid');
   const [kind, setKind] = useState<Expense['kind']>('expense');
   const [formError, setFormError] = useState('');
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [month, setMonth] = useState(today().slice(0, 7));
 
   const stats = summarize(items, month);
@@ -76,8 +77,8 @@ function LedgerDashboard() {
   function confirmDeleteAll() {
     const title = 'Delete all expenses?';
     const message = 'This permanently deletes your loaded expenses from your account. Gmail remains connected until you disconnect it.';
-    // Alert.alert with buttons is a no-op on react-native-web, so the web build uses the browser's confirm dialog.
-    if (Platform.OS === 'web') { if (globalThis.confirm?.(`${title}\n\n${message}`)) void commit([]); return; }
+    // Alert.alert with buttons is a no-op on react-native-web, and embedded browsers may suppress window.confirm, so web confirms in place.
+    if (Platform.OS === 'web') { setConfirmingDelete(true); return; }
     Alert.alert(title, message, [{ text: 'Cancel', style: 'cancel' }, { text: 'Delete', style: 'destructive', onPress: () => { void commit([]); } }]);
   }
   async function exportRecords() {
@@ -183,7 +184,9 @@ function LedgerDashboard() {
             <ActionButton label="Load sample invoices" onPress={loadSamples} secondary disabled={!loaded || busy}/>
             <Text style={s.caption}>Adds five fictional records for this month. Loading them again will not duplicate them.</Text>
             <ActionButton label="Share records as CSV text" onPress={exportRecords} secondary disabled={!loaded || busy}/>
-            <View style={s.deleteSection}><ActionButton label="Delete all expenses" onPress={confirmDeleteAll} secondary destructive disabled={!loaded || busy}/></View>
+            <View style={s.deleteSection}>{confirmingDelete
+              ? <><Text style={s.intro}>Delete all expenses? This permanently deletes your loaded expenses from your account. Gmail remains connected until you disconnect it.</Text><ActionButton label="Yes, delete all expenses" onPress={() => { setConfirmingDelete(false); void commit([]); }} destructive disabled={!loaded || busy}/><ActionButton label="Cancel" onPress={() => setConfirmingDelete(false)} secondary disabled={false}/></>
+              : <ActionButton label="Delete all expenses" onPress={confirmDeleteAll} secondary destructive disabled={!loaded || busy}/>}</View>
             <AccountDeletion disabled={busy}/>
             <Text style={s.caption}>Ledger · Android MVP · Gmail invoice import</Text>
           </>}

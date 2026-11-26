@@ -27,6 +27,17 @@ export class ProviderError extends Error {
   constructor(message, status = 502) { super(message); this.status = status; }
 }
 
+// The content itself cannot be read (encrypted, oversized, malformed). Retrying will not help,
+// unlike timeouts or a crashed worker, which are retried on the next scan.
+export class UnreadableContentError extends Error {}
+
+const IMPORTED_FIELDS = ['merchant', 'amount', 'date', 'category', 'status', 'kind', 'note'];
+// Records what the scanner wrote so a later processor version can replace the record only while the user has not edited it.
+function tagImport(expense) {
+  const imported = Object.fromEntries(IMPORTED_FIELDS.map(field => [field, expense[field] ?? null]));
+  return { ...expense, email: { ...expense.email, processorVersion: GMAIL_PROCESSOR_VERSION, imported } };
+}
+
 export async function readJson(response, limit = 16 * 1024 * 1024) {
   const reader = response.body?.getReader();
   if (!reader) throw new ProviderError('Empty response from provider.');
@@ -117,13 +128,17 @@ function flatten(part, output = []) {
 
 export async function extractPdfText(bytes, { signal } = {}) {
   signal?.throwIfAborted();
-  if (bytes.length > MAX_PDF_BYTES) throw new Error('PDF exceeds 8 MB.');
+  if (bytes.length > MAX_PDF_BYTES) throw new UnreadableContentError('PDF exceeds 8 MB.');
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('./pdf-worker.mjs', import.meta.url), { workerData: bytes, resourceLimits: { maxOldGenerationSizeMb: 256 } });
     const abort = () => { clearTimeout(timeout); reject(signal.reason); void worker.terminate(); };
     signal?.addEventListener('abort', abort, { once: true });
     const timeout = setTimeout(() => { reject(new Error('PDF processing timed out.')); void worker.terminate(); }, 20_000);
-    worker.once('message', result => { clearTimeout(timeout); if (result.error) reject(new Error(result.error)); else resolve(result.text); void worker.terminate(); });
+    // Node's watch mode posts its own messages from workers, so wait for the extractor's result shape.
+    worker.on('message', result => {
+      if (typeof result?.text !== 'string' && typeof result?.error !== 'string') return;
+      clearTimeout(timeout); if (typeof result.error === 'string') reject(new UnreadableContentError(result.error)); else resolve(result.text); void worker.terminate();
+    });
     worker.once('error', error => { clearTimeout(timeout); reject(error); });
     worker.once('exit', code => { clearTimeout(timeout); signal?.removeEventListener('abort', abort); if (code !== 0) reject(new Error('PDF worker stopped.')); });
   });
@@ -134,6 +149,7 @@ export async function extractMessage(message, accountKey, api, token, pdfExtract
   const parts = flatten(message.payload);
   const documents = [];
   const warnings = [];
+  let retryable = false;
   const plain = parts.filter(part => part.mimeType === 'text/plain' && !part.filename);
   const html = parts.filter(part => part.mimeType === 'text/html' && !part.filename);
   const bodyParts = plain.length ? plain : html;
@@ -154,22 +170,23 @@ export async function extractMessage(message, accountKey, api, token, pdfExtract
   for (const part of pdfs.slice(0, 5)) {
     signal?.throwIfAborted();
     try {
-      if ((part.body?.size ?? 0) > MAX_PDF_BYTES) throw new Error('PDF exceeds 8 MB.');
+      if ((part.body?.size ?? 0) > MAX_PDF_BYTES) throw new UnreadableContentError('PDF exceeds 8 MB.');
       const data = part.body?.data ?? (part.body?.attachmentId ? (await api(`/messages/${encodeURIComponent(message.id)}/attachments/${encodeURIComponent(part.body.attachmentId)}`, token)).data : null);
-      if (!data) throw new Error('PDF data unavailable.');
+      if (!data) throw new UnreadableContentError('PDF data unavailable.');
       const text = await abortable(pdfExtractor(Buffer.from(data, 'base64url'), { signal }), signal);
       documents.push({ text, filename: (part.filename || 'invoice.pdf').slice(0, 150) });
     } catch (error) {
       signal?.throwIfAborted();
       if (error instanceof ProviderError && ![404, 413].includes(error.status)) throw error;
-      warnings.push('PDF could not be read (encrypted, scanned, too large, or invalid). Review the source email.');
+      if (error instanceof UnreadableContentError || error instanceof ProviderError) warnings.push('PDF could not be read (encrypted, scanned, too large, or invalid). Review the source email.');
+      else { retryable = true; warnings.push('PDF could not be read this time (timed out or the reader stopped). It will be retried on the next scan.'); }
     }
   }
   if (pdfs.length > 5) warnings.push('Only the first five PDF attachments were scanned.');
   const receivedAt = new Date(Number(message.internalDate));
-  if (Number.isNaN(receivedAt.getTime())) throw new Error('Invalid message date');
+  if (Number.isNaN(receivedAt.getTime())) throw new UnreadableContentError('Invalid message date');
   const result = parseBillingMessage({ id: message.id, threadId: message.threadId, accountKey, subject: header('Subject'), from: header('From'), receivedAt: receivedAt.toISOString(), documents });
-  return { ...result, warnings, subject: header('Subject') };
+  return { ...result, warnings, retryable, subject: header('Subject') };
 }
 
 export async function syncMailbox({ budgetMs = SCAN_BUDGET_MS, signal: parentSignal, ...options }) {
@@ -217,14 +234,22 @@ async function syncPage({ api: providerApi, token, email, pageToken, pdfExtracto
       const message = await api(`/messages/${encodeURIComponent(reference.id)}?format=full`, token);
       const result = await extractMessage(message, accountKey, api, token, pdfExtractor, { signal });
       signal.throwIfAborted();
-      expenses.push(...result.expenses);
+      if (result.retryable) {
+        // Importing the readable part now would leave the failed attachment unimported for good, so wait for a full read.
+        skipped.push({ messageId: reference.id, subject: result.subject.slice(0, 250), reason: 'An attachment could not be read this time. This email will be retried on the next scan.' });
+        scanned++;
+        continue;
+      }
+      expenses.push(...result.expenses.map(tagImport));
       for (const reason of result.warnings) skipped.push({ messageId: reference.id, subject: result.subject.slice(0, 250), reason });
       if (!result.expenses.length) skipped.push({ messageId: reference.id, subject: result.subject.slice(0, 250), reason: result.reasons[0] ?? 'No readable invoice text or supported attachment.' });
     } catch (error) {
       if (signal.aborted) break; // Retry this whole message; its partial extraction is never committed.
       if (error instanceof ProviderError && ![404, 413].includes(error.status)) throw error;
-      const reason = error instanceof ProviderError && error.status === 404 ? 'Message or attachment was removed before it could be imported.' : error instanceof ProviderError && error.status === 413 ? 'Message exceeds the import size limit. Review it in Gmail.' : 'Could not extract this message. Review it in Gmail.';
+      const permanent = error instanceof ProviderError || error instanceof UnreadableContentError;
+      const reason = error instanceof ProviderError && error.status === 404 ? 'Message or attachment was removed before it could be imported.' : error instanceof ProviderError && error.status === 413 ? 'Message exceeds the import size limit. Review it in Gmail.' : permanent ? 'Could not extract this message. Review it in Gmail.' : 'Could not extract this message this time. It will be retried on the next scan.';
       skipped.push({ messageId: reference.id, subject: 'Message could not be processed', reason });
+      if (!permanent) { scanned++; continue; } // Unexpected errors may be transient or fixed by an update, so leave the message unprocessed.
     }
     processedMessageIds.push(reference.id);
     scanned++;

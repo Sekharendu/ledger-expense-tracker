@@ -17,6 +17,10 @@ export type EmailEvidence = {
   attachment?: string;
   payment?: PaymentClassification;
   paymentSource?: 'email' | 'attachment';
+  /** Processor version that wrote this record; a newer version may refresh it. */
+  processorVersion?: string;
+  /** Fields as the scanner wrote them. A record that still matches is treated as unedited. */
+  imported?: Pick<Expense, 'merchant' | 'amount' | 'date' | 'category' | 'status' | 'kind' | 'note'>;
 };
 
 export type EmailExpense = Expense & { email: EmailEvidence };

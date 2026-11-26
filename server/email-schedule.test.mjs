@@ -17,6 +17,7 @@ async function database() {
     create function auth.jwt() returns jsonb language sql stable as $$select '{}'::jsonb$$;`);
   await db.exec(await source('20261123145758_ledger_accounts_and_gmail.sql'));
   await db.exec(await source('20261125124156_ledger_automatic_email_tracking.sql'));
+  await db.exec(await source('20261126200000_ledger_refresh_untouched_imports.sql'));
   await db.query('insert into auth.users(id,email) values($1,$2),($3,$4)', [userA, 'a@example.test', userB, 'b@example.test']);
   return db;
 }
@@ -62,6 +63,42 @@ test('processed Gmail IDs, expenses and cursor commit atomically, respect cancel
   } finally { await db.close(); }
 });
 
+test('a new processor version refreshes unedited imports only, and never breaks invoice dedupe', async () => {
+  const db = await database();
+  try {
+    await db.query('insert into ledger_gmail_connections(user_id,email,encrypted_tokens) values($1,$2,$3)', [userA, 'a@example.test', 'encrypted']);
+    const run = (await db.query('insert into ledger_sync_history(user_id) values($1) returning id', [userA])).rows[0].id;
+    const save = async expenses => {
+      const claim = (await db.query('select * from ledger_claim_scan($1)', [userA])).rows[0].lease;
+      return (await db.query('select ledger_commit_scan($1,$2,$3,$4,$5) as result', [userA, claim, run, JSON.stringify(expenses), '{}'])).rows[0].result;
+    };
+    const imported = (id, invoiceKey, version, fields = {}) => {
+      const expense = { id, merchant: 'Shop', amount: 50000, date: '2026-11-20', category: 'Shopping', status: 'review', kind: 'expense', source: 'Gmail', note: '', ...fields };
+      const snapshot = Object.fromEntries(['merchant', 'amount', 'date', 'category', 'status', 'kind', 'note'].map(field => [field, expense[field]]));
+      return { ...expense, email: { provider: 'gmail', messageId: id, invoiceKey, originalAmount: expense.amount, processorVersion: version, imported: snapshot } };
+    };
+    const payload = async id => (await db.query('select payload from ledger_expenses where id=$1', [id])).rows[0].payload;
+    assert.equal((await save([imported('a', 'INV-A', 'v1'), imported('b', 'INV-B', 'v1'), imported('c', 'INV-C', 'v1'), imported('d', 'INV-D', 'v1')])).added, 4);
+    const edited = await payload('b');
+    await db.query('update ledger_expenses set payload=$2 where id=$1', ['b', JSON.stringify({ ...edited, note: 'checked by hand' })]);
+    const result = await save([
+      imported('a', 'INV-A', 'v2', { status: 'paid' }), // unedited: refreshed
+      imported('b', 'INV-B', 'v2', { status: 'paid' }), // edited by the user: kept
+      imported('c', 'INV-D', 'v2', { amount: 50000 }), // would collide with d's invoice: kept
+      imported('d', 'INV-D', 'v1', { status: 'paid' }), // same version: kept
+    ]);
+    assert.deepEqual({ added: result.added, refreshed: result.refreshed, duplicates: result.duplicates }, { added: 0, refreshed: 1, duplicates: 3 });
+    assert.equal((await payload('a')).status, 'paid');
+    assert.equal((await payload('a')).email.processorVersion, 'v2');
+    assert.equal((await payload('b')).status, 'review');
+    assert.equal((await payload('b')).note, 'checked by hand');
+    assert.equal((await payload('c')).email.invoiceKey, 'INV-C');
+    assert.equal((await payload('d')).status, 'review');
+    const legacy = imported('e', 'INV-E', 'v1'); delete legacy.email.imported; delete legacy.email.processorVersion;
+    await save([legacy]);
+    assert.equal((await save([imported('e', 'INV-E', 'v2', { status: 'paid' })])).refreshed, 0); // no snapshot: treated as edited
+  } finally { await db.close(); }
+});
 test('reconnecting resets stale watch state and a changed mailbox discards only its old processed cache', async () => {
   const db = await database();
   try {

@@ -20,5 +20,5 @@ export const beginConnection = () => request<{ attemptToken: string; authorizati
 export const getConnection = () => request<Connection>('/api/connection');
 export const getAttempt = (attempt: string) => request<{ status: string; error?: string }>(`/api/gmail/status?attempt=${encodeURIComponent(attempt)}`);
 export const disconnectConnection = () => request('/api/connection', 'DELETE');
-export const scanInvoices = () => request<SyncResult & { added: number; duplicates: number }>('/api/sync', 'POST', 5 * 60_000);
+export const scanInvoices = () => request<SyncResult & { added: number; duplicates: number; refreshed?: number }>('/api/sync', 'POST', 5 * 60_000);
 export const deleteAccount = () => request<{ deleted: boolean }>('/api/account', 'DELETE', 60_000, { 'X-Ledger-Confirm-Deletion': 'true' });
