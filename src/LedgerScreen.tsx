@@ -73,6 +73,13 @@ function LedgerDashboard() {
     setMonth(`${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}`);
   }
   async function loadSamples() { await commit(mergeExpenses(items, sampleExpenses())); }
+  function confirmDeleteAll() {
+    const title = 'Delete all expenses?';
+    const message = 'This permanently deletes your loaded expenses from your account. Gmail remains connected until you disconnect it.';
+    // Alert.alert with buttons is a no-op on react-native-web, so the web build uses the browser's confirm dialog.
+    if (Platform.OS === 'web') { if (globalThis.confirm?.(`${title}\n\n${message}`)) void commit([]); return; }
+    Alert.alert(title, message, [{ text: 'Cancel', style: 'cancel' }, { text: 'Delete', style: 'destructive', onPress: () => { void commit([]); } }]);
+  }
   async function exportRecords() {
     try { await Share.share({ title: 'Ledger expense CSV', message: toCsv(items) }); }
     catch { Alert.alert('Sharing unavailable', 'Please try again on your Android device.'); }
@@ -176,7 +183,7 @@ function LedgerDashboard() {
             <ActionButton label="Load sample invoices" onPress={loadSamples} secondary disabled={!loaded || busy}/>
             <Text style={s.caption}>Adds five fictional records for this month. Loading them again will not duplicate them.</Text>
             <ActionButton label="Share records as CSV text" onPress={exportRecords} secondary disabled={!loaded || busy}/>
-            <View style={s.deleteSection}><ActionButton label="Delete all expenses" onPress={() => Alert.alert('Delete all expenses?', 'This permanently deletes your loaded expenses from your account. Gmail remains connected until you disconnect it.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Delete', style: 'destructive', onPress: () => { void commit([]); } }])} secondary destructive disabled={!loaded || busy}/></View>
+            <View style={s.deleteSection}><ActionButton label="Delete all expenses" onPress={confirmDeleteAll} secondary destructive disabled={!loaded || busy}/></View>
             <AccountDeletion disabled={busy}/>
             <Text style={s.caption}>Ledger · Android MVP · Gmail invoice import</Text>
           </>}
