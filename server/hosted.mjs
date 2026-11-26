@@ -161,6 +161,8 @@ export function createHostedHandler(config, dependencies = {}) {
       if (url.pathname === '/api/sync' && request.method === 'POST') return json(response, 200, await scan(user.id));
       return json(response, 404, { error: 'Endpoint not found.' });
     } catch (error) {
+      // Fixed provider messages only: never log headers, tokens or notification bodies.
+      if (request.url?.split('?')[0] === PUSH_PATH && error instanceof ProviderError) console.warn('Gmail notification rejected:', error.status, error.message);
       if (!response.headersSent) json(response, error instanceof ProviderError ? error.status : 500, { error: error instanceof ProviderError ? error.message : 'The service could not complete the request. Please try again.' });
       else response.end();
     }
