@@ -58,3 +58,39 @@ test('conditional instructions and negated status override matching paid amounts
   assert.equal(cash.status, 'paid');
   assert.equal(cash.method, 'cash');
 });
+
+test('policy small print and conditional promises do not block real payment evidence', () => {
+  for (const text of [
+    'Tax Invoice\nAmount Paid: ₹590.00\nTerms: Interest @18% p.a. will be charged on unpaid invoices.',
+    'Payment successful\nRefunds will be processed once the item is returned.',
+    'Total Paid ₹590.00\nIf payment is not received within 7 days, the order will be cancelled.',
+    'Payment Status: Paid\nPlease note: late payment charges apply to pending payments.',
+    'Grand Total ₹590.00\nUnpaid Amount: ₹0.00\nAmount Paid ₹590.00',
+  ]) assert.equal(classifyPayment(text, 59000, 'expense').status, 'paid', text);
+});
+
+test('common Indian receipt wording proves payment', () => {
+  for (const text of [
+    'Transaction Successful', 'Invoice status: Paid', 'Status: Success', 'Paid via UPI on 12 Mar 2026', 'PAID',
+    'Thank you for your payment', 'We have received your payment', 'Received with thanks from Ravi Kumar the sum of Rupees Five Hundred',
+    'Received from Ravi Kumar an amount of Rs 590', 'Payment of ₹590 has been received', 'You paid ₹590.00', 'UTR No: 412345678901',
+    'Paid: ₹590.00', 'Amount Received Rs. 590.00', 'Amount Payable ₹590.00\nPaid via UPI',
+  ]) assert.equal(classifyPayment(text, 59000, 'expense').status, 'paid', text);
+});
+
+test('payable and due totals equal to a fully paid amount are not balances', () => {
+  assert.equal(classifyPayment('Total Due ₹590.00\nAmount Paid ₹590.00\nBalance ₹0.00', 59000, 'expense').status, 'paid');
+  assert.equal(classifyPayment('Amount Due ₹590.00\nPayment successful', 59000, 'expense').status, 'unpaid');
+  assert.equal(classifyPayment('Amount Payable ₹590.00', 59000, 'expense').status, 'unpaid');
+});
+
+test('wider wording still never proves payment from intent, instructions or cash on delivery', () => {
+  for (const text of ['Amount to be paid: ₹590.00', 'Must be paid by 5 Mar 2026', 'Payment Mode: Cash on Delivery\nOrder confirmed', 'Payment Status: Pending\nTerms apply', 'Order confirmation', 'Pay via UPI to ledger@okaxis', 'Payment confirmation awaited']) {
+    assert.notEqual(classifyPayment(text, 59000, 'expense').status, 'paid', text);
+  }
+});
+
+test('refund wording such as credited counts, initiated does not', () => {
+  for (const text of ['Refund of ₹85 has been credited to your account', 'Refunded to your original payment method', 'Refund successful']) assert.equal(classifyPayment(text, 8500, 'refund').status, 'paid', text);
+  assert.equal(classifyPayment('Refund will be credited in 5-7 days', 8500, 'refund').status, 'review');
+});

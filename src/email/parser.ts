@@ -47,19 +47,37 @@ function extractAmount(text: string, kind: 'expense' | 'refund'): { amount?: num
   return values.length === 1 ? { amount: values[0] } : { reason: values.length ? 'Multiple amounts with no clear total.' : 'No supported INR total found.' };
 }
 
+const monthNames = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+const month = '(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\.?';
+const ordinal = '(?:st|nd|rd|th)?';
+// ISO, day-first numeric (Indian convention), "12 Mar 2026", "12-Mar-26", "Mar 12, 2026".
+const dateValue = `(\\d{4}-\\d{1,2}-\\d{1,2}|\\d{1,2}[/.-]\\d{1,2}[/.-](?:\\d{4}|\\d{2})|\\d{1,2}${ordinal}[ \\t-]*${month}[ \\t,-]*(?:\\d{4}|\\d{2})|${month}[ \\t]+\\d{1,2}${ordinal},?[ \\t]+\\d{4})(?![\\d])`;
+
+function isoDate(raw: string): string {
+  const year = (value: string) => value.length === 2 ? `20${value}` : value;
+  const iso = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (iso) return `${iso[1]}-${iso[2].padStart(2, '0')}-${iso[3].padStart(2, '0')}`;
+  const numeric = raw.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4}|\d{2})$/);
+  if (numeric) return `${year(numeric[3])}-${numeric[2].padStart(2, '0')}-${numeric[1].padStart(2, '0')}`;
+  const dayFirst = raw.match(/^(\d{1,2})(?:st|nd|rd|th)?[ \t-]*([A-Za-z]+)\.?[ \t,-]*(\d{4}|\d{2})$/);
+  const monthFirst = raw.match(/^([A-Za-z]+)\.?[ \t]+(\d{1,2})(?:st|nd|rd|th)?,?[ \t]+(\d{4})$/);
+  const [day, name, yearText] = dayFirst ? [dayFirst[1], dayFirst[2], dayFirst[3]] : monthFirst ? [monthFirst[2], monthFirst[1], monthFirst[3]] : [];
+  const index = monthNames.indexOf(name?.slice(0, 3).toLowerCase() ?? '');
+  return day && yearText && index >= 0 ? `${year(yearText)}-${String(index + 1).padStart(2, '0')}-${day.padStart(2, '0')}` : '';
+}
+
 function extractDate(text: string, suggested: EmailEvidence['suggestedStatus'], received: string) {
-  const labels = suggested === 'unpaid' ? ['(?:due\\s+date|pay(?:ment)?\\s+due)'] : ['(?:payment\\s+date|transaction\\s+date|paid\\s+on)', '(?:invoice\\s+date|receipt\\s+date)', '(?:^|\\n)[ \\t]*date'];
+  const issued = [
+    '(?:(?:invoice|receipt|bill|order|issue|document)\\s+(?:date|dt\\.?)|date\\s+of\\s+(?:issue|invoice)|issued\\s+on)',
+    '(?<!(?:due|expiry|delivery|start|end|from|valid|birth)[ \\t]+)\\bdate(?:\\s*(?:&|and)\\s*time)?',
+  ];
+  // Unpaid bills prefer the due date, then the printed issue date, before falling back to the received date.
+  const labels = suggested === 'unpaid'
+    ? ['(?:due\\s+date|pay(?:ment)?\\s+due(?:\\s+(?:date|by|on))?|due\\s+(?:on|by)|pay\\s+by)', ...issued]
+    : ['(?:(?:payment|transaction|txn)\\s+(?:date|on)|paid\\s+on|date\\s+of\\s+payment)', ...issued];
   for (const label of labels) {
-    const match = text.match(new RegExp(`${label}\\s*[:—-]?\\s*(\\d{4}-\\d{2}-\\d{2}|\\d{1,2}[/-]\\d{1,2}[/-]\\d{4}|\\d{1,2}\\s+[A-Za-z]{3,9}\\s+\\d{4})`, 'i'));
-    if (match) {
-      let value = match[1];
-      const numeric = value.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
-      if (numeric) value = `${numeric[3]}-${numeric[2].padStart(2, '0')}-${numeric[1].padStart(2, '0')}`;
-      else if (!/^\d{4}-/.test(value)) {
-        const parts = value.match(/^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$/);
-        const index = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'].indexOf(parts?.[2].slice(0, 3).toLowerCase() ?? '');
-        value = parts && index >= 0 ? `${parts[3]}-${String(index + 1).padStart(2, '0')}-${parts[1].padStart(2, '0')}` : '';
-      }
+    for (const match of text.matchAll(new RegExp(`${label}\\s*[:=—–-]?\\s*${dateValue}`, 'gi'))) {
+      const value = isoDate(match[1]);
       if (validDate(value)) return { date: value, inferred: false };
     }
   }

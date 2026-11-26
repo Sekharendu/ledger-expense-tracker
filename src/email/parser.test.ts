@@ -150,3 +150,24 @@ test('body payment evidence transfers only to an attachment with the same invoic
   const pending = parseBillingMessage(message('', { documents: [{ text: body }, { text: pdf + '\nPayment pending', filename: 'invoice.pdf' }] }));
   assert.equal(pending.expenses[0].status, 'review');
 });
+
+test('PDF date layouts are read so paid receipts are not held back by an inferred date', () => {
+  for (const [line, expected] of [
+    ['Invoice Date: 12-Mar-2026', '2026-03-12'], ['Bill Date : 12.03.2026', '2026-03-12'], ['Order Date: Mar 12, 2026', '2026-03-12'],
+    ['Customer: A Kumar Date: 12th March 2026', '2026-03-12'], ['Invoice Dt. 12/03/26', '2026-03-12'], ['Date & Time: 12 Mar 2026, 10:30 AM', '2026-03-12'],
+  ]) {
+    const expense = parseBillingMessage(message(`Tax Invoice\n${line}\nGrand Total ₹590.00\nPaid via UPI`)).expenses[0];
+    assert.equal(expense.date, expected, line);
+    assert.equal(expense.status, 'paid', line);
+  }
+  const delivery = parseBillingMessage(message('Invoice\nDelivery date: 12 Mar 2026\nGrand Total ₹590.00\nPaid via UPI')).expenses[0];
+  assert.equal(delivery.status, 'review');
+});
+
+test('unpaid bills use the due date, then the printed issue date, before the received date', () => {
+  const due = parseBillingMessage(message('Electricity Bill\nBill Date: 20/11/2026\nAmount Payable INR 1,642.00\nDue Date: 05/12/2026')).expenses[0];
+  assert.equal(due.date, '2026-12-05');
+  const partial = parseBillingMessage(message('Tax Invoice\nInvoice Date: 08 Nov 2026\nGrand Total INR 18,000.00\nAmount Paid INR 12,000.00\nBalance Due INR 6,000.00')).expenses[0];
+  assert.equal(partial.date, '2026-11-08');
+  assert.equal(partial.status, 'review');
+});
