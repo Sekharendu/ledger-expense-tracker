@@ -113,11 +113,11 @@ Updated: 25 November 2026. An item is checked only after its stated evidence exi
 - [x] Configure the fifteen-minute recovery job in Supabase with its dedicated credential in Vault; safe status reports enabled=true and schedule */15 * * * *. Actual scheduled HTTP completion remains to verify below.
 - [x] Implement active-only 30-second saved-expense refresh and Settings metadata refresh, foreground/focus refresh and account/unmount cleanup. Four fake-clock lifecycle tests pass; device/browser observation remains separate.
 - [x] Prepare the project-specific Cloud Shell setup script for ledger-expense-tracker-515710; syntax and dry-run plan verified.
-- [x] Integrated automatic-tracking regression suite: 76 tests passed; final TypeScript/lint and setup-script dry-run checks passed.
-- [ ] Publish and verify the new deployment with the recovery and push settings.
-- [ ] Owner runs the Google Cloud Shell setup for topic, publisher permission, dedicated delivery identity and authenticated subscription.
-- [ ] Verify a live registered watch and a real Google-signed notification reaches the deployed receiver.
+- [x] Integrated automatic-tracking regression suite: 77 tests passed on 26 November, including exact numeric and string notification history IDs; final TypeScript/lint passed. Setup-script dry-run checks passed.
+- [x] Publish and verify the new deployment with the recovery and push settings. Production commit 1e35e79 is READY; dashboard and health return 200, configuration flags are true, and unauthenticated scan/notification requests return 401.
+- [x] Owner runs the Google Cloud Shell setup for topic, publisher permission, dedicated delivery identity and authenticated subscription (26 November). Gmail watch registration succeeded; expiry 3 December, with automatic renewal enabled.
+- [x] Verify a live registered watch and a real Google-signed notification reaches the deployed receiver. On 26 November at 12:21:25 UTC, Google delivered POST /api/gmail/notifications to production commit bd9e803 and received HTTP 204. The corresponding mailbox scan completed successfully at 12:21:26 UTC. Fixed numeric history-ID payload compatibility after observing the initial HTTP 400 rejections; no credentials or notification content logged.
 - [ ] Observe a new billing email imported without a manual scan and automatic dashboard refresh.
-- [ ] Verify a recovery scheduler HTTP response succeeds and run hosted security advisors.
+- [x] Verify the recovery job's actual HTTP response succeeds and run hosted security advisors. Invoked the same scheduler function: HTTP 200, processed=1, successful=1, no timeout. Naturally timed cron calls at 11:45 and 12:00 UTC on 26 November also returned HTTP 200 with no timeout. Security advisors show intentional private-table RLS-without-policy notices and the pre-existing leaked-password-protection warning; no new material finding.
 
 Pub/Sub is the primary trigger; fifteen-minute recovery covers dropped notifications and watch renewal. Delivery may be delayed. The MVP discovers newest matching billing IDs plus backfill rather than processing every Gmail history event. Existing manual corrections remain preserved. No Cloud billing plan is changed by the app code or Supabase setup.
