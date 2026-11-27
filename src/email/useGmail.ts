@@ -8,10 +8,15 @@ import type { Connection, SyncResult } from './types';
 type Lifetime = { userId: string; active: boolean; busy: boolean; version: number };
 type Attempt = { token: string; expires: number };
 
+// The Gmail section unmounts whenever Settings closes. Keep the last known status per user so
+// reopening Settings shows it straight away instead of "not connected" until the server answers.
+const lastKnown = new Map<string, Connection>();
+
 export function useGmail(onImport: () => Promise<void>) {
   const { session } = useAccount();
   const userId = session?.user.id;
-  const [connection, setConnection] = useState<Connection>({ connected: false });
+  const [connection, setConnectionState] = useState<Connection>(() => (userId && lastKnown.get(userId)) || { connected: false });
+  const [known, setKnown] = useState(() => Boolean(userId && lastKnown.has(userId)));
   const [attempt, setAttempt] = useState<Attempt | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -19,11 +24,15 @@ export function useGmail(onImport: () => Promise<void>) {
   const [report, setReport] = useState<(SyncResult & { added: number; duplicates: number; refreshed?: number }) | null>(null);
   const [owner, setOwner] = useState(userId);
   if (owner !== userId) {
-    setOwner(userId); setConnection({ connected: false }); setAttempt(null); setBusy(false); setError(''); setStatusError(''); setReport(null);
+    setOwner(userId); setConnectionState((userId && lastKnown.get(userId)) || { connected: false }); setKnown(Boolean(userId && lastKnown.has(userId))); setAttempt(null); setBusy(false); setError(''); setStatusError(''); setReport(null);
   }
   const lifetime = useRef<Lifetime | null>(null);
   const metadata = useRef<{ scope: Lifetime; promise: Promise<void> } | null>(null);
   const current = useCallback((scope: Lifetime) => scope.active && lifetime.current === scope, []);
+  const setConnection = useCallback((value: Connection) => {
+    if (userId) lastKnown.set(userId, value);
+    setConnectionState(value); setKnown(true);
+  }, [userId]);
 
   useEffect(() => {
     const scope = userId ? { userId, active: true, busy: false, version: 0 } : null;
@@ -41,12 +50,12 @@ export function useGmail(onImport: () => Promise<void>) {
         const value = await getConnection();
         if (current(scope) && scope.version === version) { setConnection(value); setStatusError(''); }
       } catch (reason) {
-        if (current(scope) && scope.version === version) setStatusError(reason instanceof Error ? reason.message : 'Could not check Gmail connection.');
+        if (current(scope) && scope.version === version) { setKnown(true); setStatusError(reason instanceof Error ? reason.message : 'Could not check Gmail connection.'); }
       } finally { if (metadata.current?.scope === scope) metadata.current = null; }
     })();
     metadata.current = { scope, promise };
     return promise;
-  }, [userId, current]);
+  }, [userId, current, setConnection]);
   useActiveRefresh(refreshConnection, Boolean(userId));
 
   const sync = useCallback(async () => {
@@ -65,7 +74,7 @@ export function useGmail(onImport: () => Promise<void>) {
       if (current(scope)) { setConnection(value); setStatusError(''); }
     } catch (reason) { if (current(scope)) setError(reason instanceof Error ? reason.message : 'The scan could not finish. Try again.'); }
     finally { if (current(scope)) { scope.busy = false; setBusy(false); } }
-  }, [userId, current, onImport]);
+  }, [userId, current, onImport, setConnection]);
 
   const pollAttempt = useCallback(async () => {
     const scope = lifetime.current;
@@ -125,6 +134,6 @@ export function useGmail(onImport: () => Promise<void>) {
       try { const value = await getConnection(); if (current(scope)) setConnection(value); }
       catch { if (current(scope)) setStatusError('Could not check Gmail connection. Try again.'); }
     } finally { if (current(scope)) { scope.busy = false; setBusy(false); } }
-  }, [userId, current]);
-  return { connection, waiting: Boolean(attempt), busy, error: error || statusError, report, hasMore: Boolean(connection.hasMore), hasSession: Boolean(attempt || connection.connected || connection.status === 'revoke_pending' || connection.status === 'reconnect_required'), connect, sync, disconnect };
+  }, [userId, current, setConnection]);
+  return { connection, checking: !known, waiting: Boolean(attempt), busy, error: error || statusError, report, hasMore: Boolean(connection.hasMore), hasSession: Boolean(attempt || connection.connected || connection.status === 'revoke_pending' || connection.status === 'reconnect_required'), connect, sync, disconnect };
 }

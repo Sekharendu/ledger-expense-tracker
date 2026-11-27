@@ -14,6 +14,7 @@ export function GmailConnection({ onImport, disabled, Button, styles: s }: Props
   const schedule = gmail.connection.scanSchedule === 'every15minutes' ? 'about every 15 minutes' : gmail.connection.scanSchedule === 'daily' ? 'daily' : 'periodically';
   return <View style={s.settingSection}>
     <Text accessibilityRole="header" style={s.settingTitle}>Gmail invoices</Text>
+    {gmail.checking ? <Text accessibilityLiveRegion="polite" style={s.intro}>Checking Gmail connection…</Text> : <>
     <Text style={s.intro}>{gmail.connection.connected ? `Connected to ${gmail.connection.email}. Read-only access to find billing emails from the last 90 days.` : 'Connect Gmail to find receipts, invoices and refunds. Ledger requests read-only access; it cannot send or delete emails.'}</Text>
     {!gmail.connection.connected && !gmail.waiting && gmail.connection.status !== 'revoke_pending' && <Button label={gmail.busy ? 'Connecting…' : 'Connect Gmail'} onPress={gmail.connect} disabled={disabled || gmail.busy} />}
     {gmail.connection.status === 'revoke_pending' && <Text style={s.intro}>Tracking is stopped. Google access could not be revoked yet; retry Disconnect to finish.</Text>}
@@ -35,6 +36,7 @@ export function GmailConnection({ onImport, disabled, Button, styles: s }: Props
       </>}
     </View>}
     {gmail.hasSession && <Button label={gmail.waiting ? 'Cancel Gmail connection' : 'Disconnect Gmail'} onPress={gmail.disconnect} secondary disabled={gmail.busy} />}
+    </>}
     <Text style={s.caption}>While Gmail is connected, background tracking continues when the app is closed or you are signed out. Your dashboard refreshes about every 30 seconds while the app is open. Disconnecting stops future scans and revokes Gmail access. Existing expenses remain in your account.</Text>
   </View>;
 }

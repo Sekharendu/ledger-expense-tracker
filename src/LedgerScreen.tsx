@@ -12,6 +12,8 @@ import { useCloudExpenses } from './auth/useCloudExpenses';
 import { AccountDeletion } from './auth/AccountDeletion';
 
 const money = (amount: number) => `${amount < 0 ? '−' : ''}₹${(Math.abs(amount) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+// Android draws the caret in selectionColor unless cursorColor is set; the pale highlight colour made it invisible.
+const inputColors = { cursorColor: c.primary, selectionColor: Platform.OS === 'android' ? c.primaryContainer : c.primary } as const;
 const today = () => { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; };
 type Tab = 'Overview' | 'Inbox' | 'Upcoming' | 'Settings';
 const destinations: { label: Tab; icon: IconName }[] = [
@@ -31,6 +33,9 @@ function LedgerDashboard() {
   const account = useAccount();
   const router = useRouter();
   const params = useLocalSearchParams<{ tab?: string }>();
+  // Google sign-in stores the account's name in user_metadata (full_name, or name as a fallback).
+  const metadata = account.session?.user.user_metadata ?? {};
+  const displayName = [metadata.full_name, metadata.name].find(value => typeof value === 'string' && value.trim())?.trim() ?? account.session?.user.email ?? 'Your account';
   const tab: Tab = ['Inbox', 'Upcoming', 'Settings'].includes(params.tab ?? '') ? params.tab as Tab : 'Overview';
   const setTab = (value: Tab) => router.setParams({ tab: value });
   const insets = useSafeAreaInsets();
@@ -120,11 +125,11 @@ function LedgerDashboard() {
       <View style={s.workspace}>
         <View style={s.header}>
           <View style={s.wordmark}><View style={s.brandMark}><View style={s.brandLine}/><View style={[s.brandLine, s.brandLineShort]}/></View><Text style={s.logo}>ledger.</Text></View>
-          <View style={s.localBadge}><Icon name="device" size={15} color={c.muted}/><Text style={s.localText}>Your account</Text></View>
+          <View style={s.localBadge}><Icon name="device" size={15} color={c.muted}/><Text numberOfLines={1} style={s.localText}>{displayName}</Text></View>
         </View>
         <ScrollView key={tab} contentContainerStyle={[s.content, expanded && s.contentExpanded]} keyboardShouldPersistTaps="handled">
           {!!storageError && <Text accessibilityRole="alert" style={s.error}>{storageError}</Text>}
-          {!loaded && !storageError && <Text accessibilityRole="status" style={s.intro}>Opening your ledger…</Text>}
+          {!loaded && !storageError && <Text accessibilityLiveRegion="polite" style={s.intro}>Opening your ledger…</Text>}
           <View style={s.titleRow}><Text accessibilityRole="header" style={s.title}>{tab === 'Overview' ? 'Your money,\nat a glance.' : tab === 'Inbox' ? 'Expense inbox' : tab === 'Upcoming' ? 'Coming up' : 'Make it yours'}</Text></View>
 
           {tab === 'Overview' && <>
@@ -191,7 +196,7 @@ function LedgerDashboard() {
             <Text style={s.caption}>Ledger · Android MVP · Gmail invoice import</Text>
           </>}
         </ScrollView>
-        {(tab === 'Overview' || tab === 'Inbox') && <View pointerEvents="box-none" style={[s.addDock, { bottom: expanded ? 24 : navHeight + 14 }]}><Pressable accessibilityRole="button" accessibilityLabel="Add an expense" accessibilityState={{ disabled: !loaded || busy }} disabled={!loaded || busy} onPress={() => open()} style={({ pressed }) => [s.addButton, pressed && s.addPressed, (!loaded || busy) && s.disabled]}><Icon name="plus" size={22} color={c.onPrimary}/><Text style={s.buttonText}>Add an expense</Text></Pressable></View>}
+        {(tab === 'Overview' || tab === 'Inbox') && <View pointerEvents="box-none" style={[s.addDock, { bottom: expanded ? 24 : navHeight + 14 }]}><Pressable accessibilityRole="button" accessibilityLabel="Add an expense" accessibilityState={{ disabled: !loaded || busy }} disabled={!loaded || busy} onPress={() => open()} style={({ pressed }) => [s.addButton, pressed && s.addPressed, (!loaded || busy) && s.disabled]}><Icon name="plus" size={26} color={c.onPrimary}/></Pressable></View>}
         {!expanded && navigation}
       </View>
     </View>
@@ -200,9 +205,9 @@ function LedgerDashboard() {
       <KeyboardAvoidingView style={[s.modal, { paddingTop: insets.top, paddingBottom: insets.bottom, paddingLeft: insets.left, paddingRight: insets.right }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={s.formHeader}><Text accessibilityRole="header" style={s.formTitle}>{editing ? 'Review record' : 'New expense'}</Text><Pressable accessibilityRole="button" accessibilityLabel="Close expense form" onPress={() => setVisible(false)} style={({ pressed }) => [s.closeButton, pressed && s.rowPressed]}><Icon name="close" color={c.ink}/></Pressable></View>
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.formContent}>
-          <Text style={s.label}>Merchant</Text><TextInput accessibilityLabel="Merchant" value={merchant} onChangeText={setMerchant} placeholder="e.g. Adobe" placeholderTextColor={c.muted} selectionColor={c.primaryContainer} style={s.input}/>
-          <Text style={s.label}>Amount · INR</Text><TextInput accessibilityLabel="Amount in rupees" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="0.00" placeholderTextColor={c.muted} selectionColor={c.primaryContainer} style={[s.input, s.amountInput]}/>
-          <Text style={s.label}>{status === 'unpaid' ? 'Due date' : 'Transaction date'} · YYYY-MM-DD</Text><TextInput accessibilityLabel="Date in YYYY-MM-DD format" value={date} onChangeText={setDate} autoCapitalize="none" selectionColor={c.primaryContainer} style={s.input}/>
+          <Text style={s.label}>Merchant</Text><TextInput accessibilityLabel="Merchant" value={merchant} onChangeText={setMerchant} placeholder="e.g. Adobe" placeholderTextColor={c.muted} {...inputColors} style={s.input}/>
+          <Text style={s.label}>Amount · INR</Text><TextInput accessibilityLabel="Amount in rupees" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="0.00" placeholderTextColor={c.muted} {...inputColors} style={[s.input, s.amountInput]}/>
+          <Text style={s.label}>{status === 'unpaid' ? 'Due date' : 'Transaction date'} · YYYY-MM-DD</Text><TextInput accessibilityLabel="Date in YYYY-MM-DD format" value={date} onChangeText={setDate} autoCapitalize="none" {...inputColors} style={s.input}/>
           <Text style={s.label}>Category</Text><View style={s.chips}>{categories.map(value => <Pressable accessibilityRole="button" accessibilityState={{ selected: category === value }} key={value} onPress={() => setCategory(value)} style={({ pressed }) => [s.chip, category === value && s.chipActive, pressed && s.pressed]}><Text style={category === value ? s.chipSelected : s.chipText}>{value}</Text></Pressable>)}</View>
           <Text style={s.label}>Type</Text><View style={s.chips}>{(['expense', 'refund'] as const).map(value => <Pressable accessibilityRole="button" accessibilityState={{ selected: kind === value }} key={value} onPress={() => setKind(value)} style={({ pressed }) => [s.chip, kind === value && s.chipActive, pressed && s.pressed]}><Text style={kind === value ? s.chipSelected : s.chipText}>{value === 'refund' ? 'Refund' : 'Expense'}</Text></Pressable>)}</View>
           <Text style={s.label}>Payment status</Text><View style={s.chips}>{(['paid', 'unpaid', 'review'] as const).map(value => <Pressable accessibilityRole="button" accessibilityState={{ selected: status === value }} key={value} onPress={() => setStatus(value)} style={({ pressed }) => [s.chip, status === value && s.chipActive, pressed && s.pressed]}><Text style={status === value ? s.chipSelected : s.chipText}>{value === 'review' ? 'Needs review' : value === 'paid' ? 'Paid / received' : 'Unpaid'}</Text></Pressable>)}</View>
@@ -250,7 +255,7 @@ const s = StyleSheet.create({
   rowTitle: { ...type.body, color: c.ink, fontWeight: '500' }, amount: { ...type.body, color: c.ink, fontWeight: '600', fontVariant: ['tabular-nums'] }, refund: { color: c.primaryText }, badge: { ...type.label, color: c.muted, marginTop: 4 }, reviewText: { color: c.primaryText, fontWeight: '600' },
   button: { minHeight: 52, borderRadius: 12, backgroundColor: c.primary, alignItems: 'center', justifyContent: 'center', padding: 16, marginTop: 16 }, secondary: { backgroundColor: c.surface, borderColor: c.outline, borderWidth: 1 },
   buttonText: { ...type.body, color: c.onPrimary, fontWeight: '600' }, secondaryText: { color: c.ink }, destructive: { backgroundColor: 'transparent', borderColor: c.error }, destructiveText: { color: c.error }, pressed: { opacity: 0.72 }, disabled: { opacity: 0.4 },
-  addDock: { position: 'absolute', bottom: 98, right: 24, left: 24, alignItems: 'flex-end' }, addButton: { minHeight: 56, borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: c.primary, paddingHorizontal: 20, paddingVertical: 14 }, addPressed: { backgroundColor: c.primaryPressed },
+  addDock: { position: 'absolute', bottom: 98, right: 24, left: 24, alignItems: 'flex-end' }, addButton: { width: 60, height: 60, borderRadius: 30, alignItems: 'center', justifyContent: 'center', backgroundColor: c.primary, elevation: 4, shadowColor: c.ink, shadowOpacity: 0.2, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } }, addPressed: { backgroundColor: c.primaryPressed },
   nav: { flexDirection: 'row', gap: 8, backgroundColor: c.ink, paddingHorizontal: 8, paddingVertical: 12 }, navRail: { flexDirection: 'column', width: 112, paddingTop: 24, gap: 18 },
   railBrand: { alignItems: 'center', paddingVertical: 20, marginBottom: 24 }, railItem: { flex: 0, minHeight: 72 },
   navItem: { flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 60, paddingVertical: 2 }, navIcon: { width: 48, minHeight: 30, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }, navIconActive: { backgroundColor: c.primary }, navText: { ...type.label, color: c.mutedOnDark, marginTop: 6, textAlign: 'center' }, navActive: { color: c.onDark, fontWeight: '600' }, navPressed: { backgroundColor: c.outlineOnDark },
